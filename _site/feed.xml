@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+	<channel>
+		<title>Hanyu Liu</title>
+		<description>Flying with Bugs</description>
+		<link>/</link>
+		<atom:link href="/feed.xml" rel="self" type="application/rss+xml" />
+		
+			<item>
+				<title>Move to a new template and start to use github site</title>
+				<description>&lt;p&gt;Finally got my new Dell XPS 13 with Ubuntu. Cannot wait to install Jekyll and install a new template to maintain my new blog hosted on github.&lt;/p&gt;
+</description>
+				<pubDate>Mon, 13 Feb 2017 00:00:00 -0800</pubDate>
+				<link>/general/2017/02/13/move-to-a-new-template.html</link>
+				<guid isPermaLink="true">/general/2017/02/13/move-to-a-new-template.html</guid>
+			</item>
+		
+	</channel>
+</rss>

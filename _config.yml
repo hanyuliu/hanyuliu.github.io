@@ -1,0 +1,37 @@
+# visit https://github.com/mojombo/jekyll/wiki/Configuration for more settings
+
+paginate: 10 # pagination based on number of posts
+paginate_path: "page:num"
+exclude: ["README.md"] # files to exclude
+highlighter: rogue
+markdown: kramdown
+disqus: hanyu_liu
+title: Hanyu Liu
+
+defaults:
+  -
+    scope:
+      path: "" # empty string for all files
+    values:
+      title: Flying with Bugs
+
+description: Flying with Bugs
+author:
+  name: Hanyu Liu
+  email: mr.hanyuliu@outlook.com
+  github: hanyuliu
+  linkedin: hanyu-liu-a180663a
+  email_md5: a93261b77756979cc604ce0c3a512aaf
+  bio: Android developer at LinkedIn
+
+rss_path: feed.xml
+categories_path: categories.html
+tags_path: tags.html
+
+# set it as url of an image
+# sidebar_background_image: https://www.dropbox.com/s/g9h23zrycedxtk5/sky.png?raw=1
+
+BASE_PATH:
+
+gems:
+  - jekyll-paginate
