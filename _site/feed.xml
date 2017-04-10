@@ -7,6 +7,29 @@
 		<atom:link href="/feed.xml" rel="self" type="application/rss+xml" />
 		
 			<item>
+				<title>Install Lineage OS on Samsung S3</title>
+				<description>&lt;p&gt;&lt;strong&gt;&lt;a href=&quot;https://en.wikipedia.org/wiki/LineageOS&quot;&gt;Lineage OS&lt;/a&gt;&lt;/strong&gt; is the successor of popular Android distribution, CyanogenMod. In this post, let’s install Lineage OS on a Samsumg S3 phone to try this brand new OS published late last year.&lt;/p&gt;
+&lt;h3 id=&quot;root-your-device&quot;&gt;Root your device&lt;/h3&gt;
+&lt;p&gt;Please refer this &lt;strong&gt;&lt;a href=&quot;https://www.kingoapp.com/root-tutorials/how-to-root-galaxy-s3.htm&quot;&gt;link&lt;/a&gt;&lt;/strong&gt; to root yoour device.&lt;/p&gt;
+&lt;h3 id=&quot;install-bootloader&quot;&gt;Install bootloader&lt;/h3&gt;
+&lt;p&gt;Before install bootloader, you may need to unlock the bootloader. I have a Verizon S3, so I use this &lt;strong&gt;&lt;a href=&quot;http://senp4i.com/how-to-unlock-the-bootloader-of-samsung-galaxy-s3&quot;&gt;link&lt;/a&gt;&lt;/strong&gt; to unlock first. After the bootloader is unlocked, you may procede to this &lt;strong&gt;&lt;a href=&quot;http://teamw.in/project/twrp2/102/&quot;&gt;link&lt;/a&gt;&lt;/strong&gt; to install TWRP bootloader.&lt;/p&gt;
+&lt;h3 id=&quot;install-lineage-os-and-google-apps&quot;&gt;Install Lineage OS and Google apps&lt;/h3&gt;
+&lt;p&gt;OK, this the last step, please refer this &lt;strong&gt;&lt;a href=&quot;http://www.lineageosrom.com/2016/12/rom-download-lineage-os-for-galaxy-s3.html&quot;&gt;link&lt;/a&gt;&lt;/strong&gt; to flash new OS to your device. If you want to install Google Play, please download &lt;strong&gt;&lt;a href=&quot;http://opengapps.org/&quot;&gt;Open GApps&lt;/a&gt;&lt;/strong&gt; and refer its instructions to install it.&lt;/p&gt;
+&lt;h3 id=&quot;play-around&quot;&gt;Play around&lt;/h3&gt;
+&lt;p&gt;Here are some photos of my S3 with Lineage OS:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;../../images/2017-03-21/home.jpg&quot; alt=&quot;Home Screen&quot; width=&quot;200px&quot; /&gt;
+&lt;img src=&quot;../../images/2017-03-21/play.jpg&quot; alt=&quot;Google Play&quot; width=&quot;200px&quot; /&gt;
+&lt;img src=&quot;../../images/2017-03-21/details.jpg&quot; alt=&quot;OS details&quot; width=&quot;200px&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;After few days’ usage, Lineage OS works really well on this device. Comparing to using S3’s original OS, which is based on 4.1, I got longer battery life and more responsive UI. Seems Android really got a lot of improvements and optimizations since 4.1. After installed a new battery to my S3, which costs less than $10, I almost got a similar experience from current mid-range devices.&lt;/p&gt;
+</description>
+				<pubDate>Tue, 21 Mar 2017 00:00:00 -0700</pubDate>
+				<link>/general/2017/03/21/install-lineage-os-to-s3.html</link>
+				<guid isPermaLink="true">/general/2017/03/21/install-lineage-os-to-s3.html</guid>
+			</item>
+		
+			<item>
 				<title>Move to a new template and start to use github site</title>
 				<description>&lt;p&gt;Finally got my new Dell XPS 13 with Ubuntu. Cannot wait to install Jekyll and install a new template to maintain my new blog hosted on github.&lt;/p&gt;
 </description>
