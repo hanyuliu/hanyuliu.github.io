@@ -15,8 +15,8 @@ OK, this the last step, please refer this **[link](http://www.lineageosrom.com/2
 ### Play around
 Here are some photos of my S3 with Lineage OS:
 
-![Home Screen](../../images/2017-03-21/home.jpg){:width="200px"}
-![Google Play](../../images/2017-03-21/play.jpg){:width="200px"}
-![OS details](../../images/2017-03-21/details.jpg){:width="200px"}
+![Home Screen](/images/2017-03-21/home.jpg){:width="200px"}
+![Google Play](/images/2017-03-21/play.jpg){:width="200px"}
+![OS details](/images/2017-03-21/details.jpg){:width="200px"}
 
 After few days' usage, Lineage OS works really well on this device. Comparing to using S3's original OS, which is based on 4.1, I got longer battery life and more responsive UI. Seems Android really got a lot of improvements and optimizations since 4.1. After installed a new battery to my S3, which costs less than $10, I almost got a similar experience from current mid-range devices.
