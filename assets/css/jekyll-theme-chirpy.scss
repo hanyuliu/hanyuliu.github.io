@@ -1,7 +1,14 @@
 ---
 ---
 
-@use "main";
+/* prettier-ignore */
+@use 'main
+{%- if jekyll.environment == 'production' -%}
+  .bundle
+{%- endif -%}
+';
+
+/* custom styles */
 
 #avatar img {
   width: 100%;
