@@ -1,37 +1,111 @@
-# visit https://github.com/mojombo/jekyll/wiki/Configuration for more settings
+theme: jekyll-theme-chirpy
 
-paginate: 10 # pagination based on number of posts
-paginate_path: "page:num"
-exclude: ["README.md"] # files to exclude
-highlighter: rouge
-markdown: kramdown
-disqus: hanyuliu-me
+lang: en
+timezone: America/Los_Angeles
+
 title: Hanyu Liu
+tagline: Explore new ideas and build apps
+description: >-
+  Explore new ideas and build apps
+
+url: "https://hanyuliu.me"
+
+github:
+  username: hanyuliu
+
+social:
+  name: Hanyu Liu
+  email: hanyuliu.henry.china@gmail.com
+  links:
+    - https://github.com/hanyuliu
+    - https://www.linkedin.com/in/hanyu-liu-a180663a
+
+theme_mode: # [light | dark] — leave empty to follow system preference
+
+avatar: /assets/img/my_icon.jpeg
+
+toc: true
+
+comments:
+  active: disqus
+  disqus:
+    shortname: hanyuliu-me
+
+pwa:
+  enabled: true
+  cache:
+    enabled: true
+
+paginate: 10
+
+baseurl: ""
+
+# ------------ The following options are not recommended to be modified ------------------
+
+kramdown:
+  footnote_backlink: "&#8617;&#xfe0e;"
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    css_class: highlight
+    span:
+      line_numbers: false
+    block:
+      line_numbers: true
+      start_line: 1
+
+collections:
+  tabs:
+    output: true
+    sort_by: order
 
 defaults:
-  -
-    scope:
-      path: "" # empty string for all files
+  - scope:
+      path: ""
+      type: posts
     values:
-      title: Flying with Bugs
+      layout: post
+      comments: true
+      toc: true
+      permalink: /posts/:title/
+  - scope:
+      path: _drafts
+    values:
+      comments: false
+  - scope:
+      path: ""
+      type: tabs
+    values:
+      layout: page
+      permalink: /:title/
 
-description: Flying with Bugs
-author:
-  name: Hanyu Liu
-  email: mr.hanyuliu@outlook.com
-  github: hanyuliu
-  linkedin: hanyu-liu-a180663a
-  email_md5: a93261b77756979cc604ce0c3a512aaf
-  bio: Android developer at LinkedIn
+sass:
+  style: compressed
 
-rss_path: feed.xml
-categories_path: categories.html
-tags_path: tags.html
+compress_html:
+  clippings: all
+  comments: all
+  endings: all
+  profile: false
+  blanklines: false
+  ignore:
+    envs: [development]
 
-# set it as url of an image
-# sidebar_background_image: https://www.dropbox.com/s/g9h23zrycedxtk5/sky.png?raw=1
+exclude:
+  - "*.gem"
+  - "*.gemspec"
+  - docs
+  - tools
+  - README.md
+  - LICENSE
+  - "*.config.js"
+  - package*.json
+  - WRITING.md
 
-BASE_PATH:
-
-gems:
-  - jekyll-paginate
+jekyll-archives:
+  enabled: [categories, tags]
+  layouts:
+    category: category
+    tag: tag
+  permalinks:
+    tag: /tags/:name/
+    category: /categories/:name/
