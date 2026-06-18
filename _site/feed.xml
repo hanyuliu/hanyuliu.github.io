@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-06-16T01:09:35-07:00</updated>
+  <updated>2026-06-18T00:08:40-07:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,32 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>Streaming Through Temporal: The Workflow Is the Registry</title>
+    <link href="http://localhost:4000/posts/streaming-through-temporal-workflow-is-the-registry/" rel="alternate" type="text/html" title="Streaming Through Temporal: The Workflow Is the Registry" />
+    <published>2026-04-01T01:00:00-07:00</published>
+  
+    <updated>2026-04-01T01:00:00-07:00</updated>
+  
+    <id>http://localhost:4000/posts/streaming-through-temporal-workflow-is-the-registry/</id>
+    <content type="text/html" src="http://localhost:4000/posts/streaming-through-temporal-workflow-is-the-registry/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="Engineering" />
+    
+    <category term="Distributed Systems" />
+    
+  
+
+  <summary>Modern AI agent UX expects streaming: tokens as the model thinks, intermediate reasoning and tool progress as it happens, sub-agent and tool output relayed through the parent, and a side channel for interruption, follow-up input, or human-in-the-loop approval. Most of these are bidirectional. The orchestration around them—retries, tool fan-out, multi-step processing, durable execution, replay o...</summary>
+
+  </entry>
 
   
   <entry>
