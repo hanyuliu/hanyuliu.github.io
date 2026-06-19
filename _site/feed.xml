@@ -4,7 +4,7 @@
   <id>https://hanyuliu.me/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-06-19T13:56:10-07:00</updated>
+  <updated>2026-06-19T14:11:01-07:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>https://hanyuliu.me/</uri>
@@ -70,6 +70,30 @@
 
   
   <entry>
+    <title>只有榔头，也要把螺丝拧好</title>
+    <link href="https://hanyuliu.me/posts/hammer-and-screws/" rel="alternate" type="text/html" title="只有榔头，也要把螺丝拧好" />
+    <published>2026-06-17T00:00:00-07:00</published>
+  
+    <updated>2026-06-17T00:00:00-07:00</updated>
+  
+    <id>https://hanyuliu.me/posts/hammer-and-screws/</id>
+    <content type="text/html" src="https://hanyuliu.me/posts/hammer-and-screws/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="Thoughts" />
+    
+  
+
+  <summary>工作中，我最佩服的是这样一种人——手边只有榔头，却能想办法把螺丝拧好，还拧得很漂亮。  这不是将就，是一种在约束下以巧思成事的能力。他们看得清现实的边界，能在有限的条件里找到真正走得通的路，一点一点把事情做成。  这种能力，远比那些有系统设计洁癖、稍遇变化就绕道回避、甚至动辄高谈阔论却对自己双标的人，更值得尊重，也更值得共事。  能在现实里聚沙成塔，才是真本事。</summary>
+
+  </entry>
+
+  
+  <entry>
     <title>Streaming Through Temporal: The Workflow Is the Registry</title>
     <link href="https://hanyuliu.me/posts/streaming-through-temporal-workflow-is-the-registry/" rel="alternate" type="text/html" title="Streaming Through Temporal: The Workflow Is the Registry" />
     <published>2026-04-01T01:00:00-07:00</published>
@@ -115,30 +139,6 @@
   
 
   <summary>Lineage OS is the successor of popular Android distribution, CyanogenMod. In this post, let’s install Lineage OS on a Samsumg S3 phone to try this brand new OS published late last year.  Root your device  Please refer this link to root yoour device.  Install bootloader  Before install bootloader, you may need to unlock the bootloader. I have a Verizon S3, so I use this link to unlock first. Aft...</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>Move to a new template and start to use github site</title>
-    <link href="https://hanyuliu.me/posts/move-to-a-new-template/" rel="alternate" type="text/html" title="Move to a new template and start to use github site" />
-    <published>2017-02-13T00:00:00-08:00</published>
-  
-    <updated>2017-02-13T00:00:00-08:00</updated>
-  
-    <id>https://hanyuliu.me/posts/move-to-a-new-template/</id>
-    <content type="text/html" src="https://hanyuliu.me/posts/move-to-a-new-template/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="General" />
-    
-  
-
-  <summary>Finally got my new Dell XPS 13 with Ubuntu. Cannot wait to install Jekyll and install a new template to maintain my new blog hosted on github.</summary>
 
   </entry>
 
