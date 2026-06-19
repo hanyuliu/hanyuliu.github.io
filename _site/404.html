@@ -34,14 +34,14 @@
 <meta property="og:locale" content="en" />
 <meta name="description" content="Explore new ideas and build apps" />
 <meta name="twitter:description" property="og:description" content="Explore new ideas and build apps" />
-<link rel="canonical" href="https://hanyuliu.me/404.html" />
-<meta property="og:url" content="https://hanyuliu.me/404.html" />
+<link rel="canonical" href="http://localhost:4000/404.html" />
+<meta property="og:url" content="http://localhost:4000/404.html" />
 <meta property="og:site_name" content="Hanyu Liu" />
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary" />
 <meta name="twitter:title" content="404: Page not found" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebPage","description":"Explore new ideas and build apps","headline":"404: Page not found","url":"https://hanyuliu.me/404.html"}</script>
+{"@context":"https://schema.org","@type":"WebPage","description":"Explore new ideas and build apps","headline":"404: Page not found","url":"http://localhost:4000/404.html"}</script>
 <!-- End Jekyll SEO tag -->
 
 
@@ -337,7 +337,6 @@
 
 <script>
   (function () {
-    var postList = document.getElementById('post-list');
     var btn = document.getElementById('lang-toggle');
     if (!btn) return;
 
@@ -356,6 +355,7 @@
       btn.title = state.label;
       btn.setAttribute('aria-label', state.label);
       btn.classList.toggle('lang-active', state.key !== 'all');
+      var postList = document.getElementById('post-list');
       if (!postList) return;
       postList.querySelectorAll('article').forEach(function (article) {
         var show = state.key === 'all' || article.getAttribute('data-lang') === state.key;
@@ -557,7 +557,7 @@
         
         
         <li class="text-truncate lh-lg">
-          <a href="/posts/hammer-and-screws/">只有榔头，也要把螺丝拧好</a>
+          <a href="/posts/hammer-and-screws/">手边只有榔头，却能想办法把螺丝拧好</a>
         </li>
       
         

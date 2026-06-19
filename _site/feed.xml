@@ -1,17 +1,17 @@
 
 
 <feed xmlns="http://www.w3.org/2005/Atom">
-  <id>https://hanyuliu.me/</id>
+  <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-06-19T14:11:01-07:00</updated>
+  <updated>2026-06-19T15:29:47-07:00</updated>
   <author>
     <name>Hanyu Liu</name>
-    <uri>https://hanyuliu.me/</uri>
+    <uri>http://localhost:4000/</uri>
   </author>
-  <link rel="self" type="application/atom+xml" href="https://hanyuliu.me/feed.xml"/>
+  <link rel="self" type="application/atom+xml" href="http://localhost:4000/feed.xml"/>
   <link rel="alternate" type="text/html" hreflang="en"
-    href="https://hanyuliu.me/"/>
+    href="http://localhost:4000/"/>
   <generator uri="https://jekyllrb.com/" version="4.4.1">Jekyll</generator>
   <rights> © 2026 Hanyu Liu </rights>
   <icon>/assets/img/favicons/favicon.ico</icon>
@@ -21,13 +21,13 @@
   
   <entry>
     <title>Decoding GGUF Quantization Suffixes</title>
-    <link href="https://hanyuliu.me/posts/gguf-quantization-suffix-guide/" rel="alternate" type="text/html" title="Decoding GGUF Quantization Suffixes" />
+    <link href="http://localhost:4000/posts/gguf-quantization-suffix-guide/" rel="alternate" type="text/html" title="Decoding GGUF Quantization Suffixes" />
     <published>2026-06-19T01:00:00-07:00</published>
   
     <updated>2026-06-19T01:00:00-07:00</updated>
   
-    <id>https://hanyuliu.me/posts/gguf-quantization-suffix-guide/</id>
-    <content type="text/html" src="https://hanyuliu.me/posts/gguf-quantization-suffix-guide/" />
+    <id>http://localhost:4000/posts/gguf-quantization-suffix-guide/</id>
+    <content type="text/html" src="http://localhost:4000/posts/gguf-quantization-suffix-guide/" />
     <author>
       <name>Hanyu Liu</name>
     </author>
@@ -47,13 +47,13 @@
   
   <entry>
     <title>I Started an Audio Learning Channel: EarLearner</title>
-    <link href="https://hanyuliu.me/posts/earlearner-youtube-channel-launch/" rel="alternate" type="text/html" title="I Started an Audio Learning Channel: EarLearner" />
+    <link href="http://localhost:4000/posts/earlearner-youtube-channel-launch/" rel="alternate" type="text/html" title="I Started an Audio Learning Channel: EarLearner" />
     <published>2026-06-18T00:00:00-07:00</published>
   
     <updated>2026-06-18T00:00:00-07:00</updated>
   
-    <id>https://hanyuliu.me/posts/earlearner-youtube-channel-launch/</id>
-    <content type="text/html" src="https://hanyuliu.me/posts/earlearner-youtube-channel-launch/" />
+    <id>http://localhost:4000/posts/earlearner-youtube-channel-launch/</id>
+    <content type="text/html" src="http://localhost:4000/posts/earlearner-youtube-channel-launch/" />
     <author>
       <name>Hanyu Liu</name>
     </author>
@@ -70,14 +70,14 @@
 
   
   <entry>
-    <title>只有榔头，也要把螺丝拧好</title>
-    <link href="https://hanyuliu.me/posts/hammer-and-screws/" rel="alternate" type="text/html" title="只有榔头，也要把螺丝拧好" />
+    <title>手边只有榔头，却能想办法把螺丝拧好</title>
+    <link href="http://localhost:4000/posts/hammer-and-screws/" rel="alternate" type="text/html" title="手边只有榔头，却能想办法把螺丝拧好" />
     <published>2026-06-17T00:00:00-07:00</published>
   
     <updated>2026-06-17T00:00:00-07:00</updated>
   
-    <id>https://hanyuliu.me/posts/hammer-and-screws/</id>
-    <content type="text/html" src="https://hanyuliu.me/posts/hammer-and-screws/" />
+    <id>http://localhost:4000/posts/hammer-and-screws/</id>
+    <content type="text/html" src="http://localhost:4000/posts/hammer-and-screws/" />
     <author>
       <name>Hanyu Liu</name>
     </author>
@@ -88,20 +88,20 @@
     
   
 
-  <summary>工作中，我最佩服的是这样一种人——手边只有榔头，却能想办法把螺丝拧好，还拧得很漂亮。  这不是将就，是一种在约束下以巧思成事的能力。他们看得清现实的边界，能在有限的条件里找到真正走得通的路，一点一点把事情做成。  这种能力，远比那些有系统设计洁癖、稍遇变化就绕道回避、甚至动辄高谈阔论却对自己双标的人，更值得尊重，也更值得共事。  能在现实里聚沙成塔，才是真本事。</summary>
+  <summary>工作中，我最佩服的是这样一种人——手边只有榔头，却能想办法把螺丝优雅巧妙的拧好。 这不是阴阳怪气的表达，而是描述一种在现实约束下，以创造力和责任心，在有限的条件里聚沙成塔的能力。这种工程能力，远比那些有系统设计洁癖、稍遇变化就绕道回避、甚至动辄高谈阔论给逃避找借口，更值得尊重，也更值得共事。</summary>
 
   </entry>
 
   
   <entry>
     <title>Streaming Through Temporal: The Workflow Is the Registry</title>
-    <link href="https://hanyuliu.me/posts/streaming-through-temporal-workflow-is-the-registry/" rel="alternate" type="text/html" title="Streaming Through Temporal: The Workflow Is the Registry" />
+    <link href="http://localhost:4000/posts/streaming-through-temporal-workflow-is-the-registry/" rel="alternate" type="text/html" title="Streaming Through Temporal: The Workflow Is the Registry" />
     <published>2026-04-01T01:00:00-07:00</published>
   
     <updated>2026-04-01T01:00:00-07:00</updated>
   
-    <id>https://hanyuliu.me/posts/streaming-through-temporal-workflow-is-the-registry/</id>
-    <content type="text/html" src="https://hanyuliu.me/posts/streaming-through-temporal-workflow-is-the-registry/" />
+    <id>http://localhost:4000/posts/streaming-through-temporal-workflow-is-the-registry/</id>
+    <content type="text/html" src="http://localhost:4000/posts/streaming-through-temporal-workflow-is-the-registry/" />
     <author>
       <name>Hanyu Liu</name>
     </author>
@@ -121,13 +121,13 @@
   
   <entry>
     <title>Install Lineage OS on Samsung S3</title>
-    <link href="https://hanyuliu.me/posts/install-lineage-os-to-s3/" rel="alternate" type="text/html" title="Install Lineage OS on Samsung S3" />
+    <link href="http://localhost:4000/posts/install-lineage-os-to-s3/" rel="alternate" type="text/html" title="Install Lineage OS on Samsung S3" />
     <published>2017-03-21T01:00:00-07:00</published>
   
     <updated>2017-03-21T01:00:00-07:00</updated>
   
-    <id>https://hanyuliu.me/posts/install-lineage-os-to-s3/</id>
-    <content type="text/html" src="https://hanyuliu.me/posts/install-lineage-os-to-s3/" />
+    <id>http://localhost:4000/posts/install-lineage-os-to-s3/</id>
+    <content type="text/html" src="http://localhost:4000/posts/install-lineage-os-to-s3/" />
     <author>
       <name>Hanyu Liu</name>
     </author>

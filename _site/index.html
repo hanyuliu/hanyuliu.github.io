@@ -34,14 +34,14 @@
 <meta property="og:locale" content="en" />
 <meta name="description" content="Explore new ideas and build apps" />
 <meta name="twitter:description" property="og:description" content="Explore new ideas and build apps" />
-<link rel="canonical" href="https://hanyuliu.me/" />
-<meta property="og:url" content="https://hanyuliu.me/" />
+<link rel="canonical" href="http://localhost:4000/" />
+<meta property="og:url" content="http://localhost:4000/" />
 <meta property="og:site_name" content="Hanyu Liu" />
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary" />
 <meta name="twitter:title" content="Hanyu Liu" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebSite","description":"Explore new ideas and build apps","headline":"Hanyu Liu","name":"Hanyu Liu","sameAs":["https://github.com/hanyuliu","https://www.linkedin.com/in/hanyu-liu-a180663a"],"url":"https://hanyuliu.me/"}</script>
+{"@context":"https://schema.org","@type":"WebSite","description":"Explore new ideas and build apps","headline":"Hanyu Liu","name":"Hanyu Liu","sameAs":["https://github.com/hanyuliu","https://www.linkedin.com/in/hanyu-liu-a180663a"],"url":"http://localhost:4000/"}</script>
 <!-- End Jekyll SEO tag -->
 
 
@@ -345,7 +345,6 @@
 
 <script>
   (function () {
-    var postList = document.getElementById('post-list');
     var btn = document.getElementById('lang-toggle');
     if (!btn) return;
 
@@ -364,6 +363,7 @@
       btn.title = state.label;
       btn.setAttribute('aria-label', state.label);
       btn.classList.toggle('lang-active', state.key !== 'all');
+      var postList = document.getElementById('post-list');
       if (!postList) return;
       postList.querySelectorAll('article').forEach(function (article) {
         var show = state.key === 'all' || article.getAttribute('data-lang') === state.key;
@@ -634,10 +634,10 @@
 
         <div class="col-md-12">
           <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">只有榔头，也要把螺丝拧好</h1>
+            <h1 class="card-title my-2 mt-md-0">手边只有榔头，却能想办法把螺丝拧好</h1>
 
             <div class="card-text content mt-0 mb-3">
-              <p>工作中，我最佩服的是这样一种人——手边只有榔头，却能想办法把螺丝拧好，还拧得很漂亮。  这不是将就，是一种在约束下以巧思成事的能力。他们看得清现实的边界，能在有限的条件里找到真正走得通的路，一点一点把事情做成。  这种能力，远比那些有系统设计洁癖、稍遇变化就绕道回避、甚至动辄高谈阔论却对自己双标的人，更值得尊重，也更值得共事。  能在现实里聚沙成塔，才是真本事。</p>
+              <p>工作中，我最佩服的是这样一种人——手边只有榔头，却能想办法把螺丝优雅巧妙的拧好。 这不是阴阳怪气的表达，而是描述一种在现实约束下，以创造力和责任心，在有限的条件里聚沙成塔的能力。这种工程能力，远比那些有系统设计洁癖、稍遇变化就绕道回避、甚至动辄高谈阔论给逃避找借口，更值得尊重，也更值得共事。</p>
             </div>
 
             <div class="post-meta flex-grow-1 d-flex align-items-end">
@@ -899,7 +899,7 @@
         
         
         <li class="text-truncate lh-lg">
-          <a href="/posts/hammer-and-screws/">只有榔头，也要把螺丝拧好</a>
+          <a href="/posts/hammer-and-screws/">手边只有榔头，却能想办法把螺丝拧好</a>
         </li>
       
         

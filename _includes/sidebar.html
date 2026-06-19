@@ -109,7 +109,6 @@
 
 <script>
   (function () {
-    var postList = document.getElementById('post-list');
     var btn = document.getElementById('lang-toggle');
     if (!btn) return;
 
@@ -128,6 +127,7 @@
       btn.title = state.label;
       btn.setAttribute('aria-label', state.label);
       btn.classList.toggle('lang-active', state.key !== 'all');
+      var postList = document.getElementById('post-list');
       if (!postList) return;
       postList.querySelectorAll('article').forEach(function (article) {
         var show = state.key === 'all' || article.getAttribute('data-lang') === state.key;
