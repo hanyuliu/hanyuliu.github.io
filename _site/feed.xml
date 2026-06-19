@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-06-18T00:41:50-07:00</updated>
+  <updated>2026-06-19T09:09:48-07:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -20,8 +20,8 @@
 
   
   <entry>
-    <title>I Started a Chinese-Language Audio Learning Channel: EarLearner</title>
-    <link href="http://localhost:4000/posts/earlearner-youtube-channel-launch/" rel="alternate" type="text/html" title="I Started a Chinese-Language Audio Learning Channel: EarLearner" />
+    <title>I Started an Audio Learning Channel: EarLearner</title>
+    <link href="http://localhost:4000/posts/earlearner-youtube-channel-launch/" rel="alternate" type="text/html" title="I Started an Audio Learning Channel: EarLearner" />
     <published>2026-06-18T00:00:00-07:00</published>
   
     <updated>2026-06-18T00:00:00-07:00</updated>

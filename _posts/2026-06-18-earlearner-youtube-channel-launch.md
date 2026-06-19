@@ -1,5 +1,5 @@
 ---
-title: "I Started a Chinese-Language Audio Learning Channel: EarLearner"
+title: "I Started an Audio Learning Channel: EarLearner"
 date: 2026-06-18 00:00:00 -0700
 categories: [Announcement]
 tags: [youtube, learning, system-design, chinese, audio]
@@ -13,7 +13,7 @@ I spend a lot of time in transit — driving, commuting, waiting — where my ha
 
 Most technical learning assumes you are sitting at a desk with a screen. That format does not fit a 30-minute drive. I wanted audio that works as the primary medium, not as a fallback.
 
-EarLearner is that: clear, focused, audio-only lessons, designed for busy people who want to grow their knowledge without staring at a screen. No slides, no visuals — just high-quality explanations you can absorb while doing something else. Every moment counts.
+EarLearner is exactly that: clear, focused, audio-only lessons designed for busy people who want to grow their knowledge without staring at a screen. No slides, no visuals — just high-quality explanations you can absorb while doing something else. Every moment counts.
 
 ## The first three episodes
 
