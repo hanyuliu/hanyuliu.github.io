@@ -10,3 +10,6 @@ vendor/
 
 # macOS
 .DS_Store
+
+# Local dev server PID tracking
+.server.pid

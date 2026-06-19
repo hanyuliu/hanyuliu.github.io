@@ -1,0 +1,22 @@
+#!/bin/bash
+set -e
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PID_FILE="$REPO_ROOT/.server.pid"
+
+if [ -f "$PID_FILE" ]; then
+  PID=$(cat "$PID_FILE")
+  if kill -0 "$PID" 2>/dev/null; then
+    echo "Jekyll server already running (PID $PID) at http://localhost:4000"
+    exit 0
+  else
+    echo "Stale PID file found, removing."
+    rm -f "$PID_FILE"
+  fi
+fi
+
+cd "$REPO_ROOT"
+bundle exec jekyll serve --livereload > /tmp/jekyll-serve.log 2>&1 &
+echo $! > "$PID_FILE"
+echo "Jekyll server started (PID $(cat "$PID_FILE")) — http://localhost:4000"
+echo "Logs: /tmp/jekyll-serve.log"

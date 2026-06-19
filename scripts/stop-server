@@ -1,0 +1,26 @@
+#!/bin/bash
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PID_FILE="$REPO_ROOT/.server.pid"
+
+if [ -f "$PID_FILE" ]; then
+  PID=$(cat "$PID_FILE")
+  if kill -0 "$PID" 2>/dev/null; then
+    kill "$PID"
+    echo "Jekyll server stopped (PID $PID)"
+  else
+    echo "Process $PID not running (stale PID file)"
+  fi
+  rm -f "$PID_FILE"
+else
+  echo "No PID file found. Searching for any jekyll serve process..."
+  if pkill -f "jekyll serve"; then
+    echo "Killed jekyll serve process(es)"
+  else
+    echo "No jekyll serve process found"
+  fi
+fi
+
+# Clean Jekyll tmp/cache files
+rm -rf "$REPO_ROOT/.jekyll-cache" "$REPO_ROOT/.jekyll-metadata" "$REPO_ROOT/.sass-cache"
+echo "Cleaned Jekyll cache files"
