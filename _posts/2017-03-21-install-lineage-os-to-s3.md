@@ -3,6 +3,7 @@ title: Install Lineage OS on Samsung S3
 date: 2017-03-21 00:00:00 -0800
 categories: [General]
 tags: [android]
+lang: en
 ---
 
 **[Lineage OS](https://en.wikipedia.org/wiki/LineageOS)** is the successor of popular Android distribution, CyanogenMod. In this post, let's install Lineage OS on a Samsumg S3 phone to try this brand new OS published late last year.

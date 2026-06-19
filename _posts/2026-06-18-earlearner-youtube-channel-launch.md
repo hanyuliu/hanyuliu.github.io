@@ -3,6 +3,7 @@ title: "I Started an Audio Learning Channel: EarLearner"
 date: 2026-06-18 00:00:00 -0700
 categories: [Announcement]
 tags: [youtube, learning, system-design, chinese, audio]
+lang: en
 ---
 
 I just published the first three episodes on my new YouTube channel, [EarLearner](https://www.youtube.com/@earlearner). Here is what it is and why I built it.

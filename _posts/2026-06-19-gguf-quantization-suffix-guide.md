@@ -3,6 +3,7 @@ title: "Decoding GGUF Quantization Suffixes"
 date: 2026-06-19 00:00:00 -0800
 categories: [AI, Local LLMs]
 tags: [gguf, llama.cpp, quantization, local-llm, ai]
+lang: en
 ---
 
 You browse HuggingFace looking for a model to run locally, and the file list looks like this:

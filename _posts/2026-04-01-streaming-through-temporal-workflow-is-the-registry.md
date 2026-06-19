@@ -4,6 +4,7 @@ date: 2026-04-01 00:00:00 -0800
 categories: [Engineering, Distributed Systems]
 tags: [temporal, streaming, grpc, java, distributed-systems, ai-agents]
 mermaid: true
+lang: en
 ---
 
 Modern AI agent UX expects streaming: tokens as the model thinks, intermediate reasoning and tool progress as it happens, sub-agent and tool output relayed through the parent, and a side channel for interruption, follow-up input, or human-in-the-loop approval. Most of these are bidirectional. The orchestration around them—retries, tool fan-out, multi-step processing, durable execution, replay on failure—is exactly what Temporal exists for. The question is how to get streaming out of an orchestration substrate that was not designed for it.

@@ -477,9 +477,17 @@
 
 
 
+<!-- Language filter -->
+<div id="lang-filter" class="d-flex gap-2 mb-3 px-xl-1">
+  <button class="btn btn-sm btn-primary lang-btn active" data-lang="all">All</button>
+  <button class="btn btn-sm btn-outline-secondary lang-btn" data-lang="en">EN</button>
+  <button class="btn btn-sm btn-outline-secondary lang-btn" data-lang="zh">中文</button>
+</div>
+
 <div id="post-list" class="flex-grow-1 px-xl-1">
   
-    <article class="card-wrapper card">
+    
+    <article class="card-wrapper card" data-lang="en">
       <a href="/posts/gguf-quantization-suffix-guide/" class="post-preview row g-0 flex-md-row-reverse">
         
 
@@ -535,7 +543,8 @@
       </a>
     </article>
   
-    <article class="card-wrapper card">
+    
+    <article class="card-wrapper card" data-lang="en">
       <a href="/posts/earlearner-youtube-channel-launch/" class="post-preview row g-0 flex-md-row-reverse">
         
 
@@ -590,7 +599,8 @@
       </a>
     </article>
   
-    <article class="card-wrapper card">
+    
+    <article class="card-wrapper card" data-lang="en">
       <a href="/posts/streaming-through-temporal-workflow-is-the-registry/" class="post-preview row g-0 flex-md-row-reverse">
         
 
@@ -646,7 +656,8 @@
       </a>
     </article>
   
-    <article class="card-wrapper card">
+    
+    <article class="card-wrapper card" data-lang="en">
       <a href="/posts/install-lineage-os-to-s3/" class="post-preview row g-0 flex-md-row-reverse">
         
 
@@ -701,7 +712,8 @@
       </a>
     </article>
   
-    <article class="card-wrapper card">
+    
+    <article class="card-wrapper card" data-lang="en">
       <a href="/posts/move-to-a-new-template/" class="post-preview row g-0 flex-md-row-reverse">
         
 
@@ -760,6 +772,27 @@
 <!-- #post-list -->
 
 
+
+<script>
+  (function () {
+    var btns = document.querySelectorAll('.lang-btn');
+    btns.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var selected = this.getAttribute('data-lang');
+        btns.forEach(function (b) {
+          b.classList.remove('active', 'btn-primary');
+          b.classList.add('btn-outline-secondary');
+        });
+        this.classList.add('active', 'btn-primary');
+        this.classList.remove('btn-outline-secondary');
+        document.querySelectorAll('#post-list article').forEach(function (article) {
+          var show = selected === 'all' || article.getAttribute('data-lang') === selected;
+          article.style.display = show ? '' : 'none';
+        });
+      });
+    });
+  })();
+</script>
 
 
             
