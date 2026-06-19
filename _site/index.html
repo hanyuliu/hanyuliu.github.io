@@ -34,14 +34,14 @@
 <meta property="og:locale" content="en" />
 <meta name="description" content="Explore new ideas and build apps" />
 <meta name="twitter:description" property="og:description" content="Explore new ideas and build apps" />
-<link rel="canonical" href="http://localhost:4000/" />
-<meta property="og:url" content="http://localhost:4000/" />
+<link rel="canonical" href="https://hanyuliu.me/" />
+<meta property="og:url" content="https://hanyuliu.me/" />
 <meta property="og:site_name" content="Hanyu Liu" />
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary" />
 <meta name="twitter:title" content="Hanyu Liu" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebSite","description":"Explore new ideas and build apps","headline":"Hanyu Liu","name":"Hanyu Liu","sameAs":["https://github.com/hanyuliu","https://www.linkedin.com/in/hanyu-liu-a180663a"],"url":"http://localhost:4000/"}</script>
+{"@context":"https://schema.org","@type":"WebSite","description":"Explore new ideas and build apps","headline":"Hanyu Liu","name":"Hanyu Liu","sameAs":["https://github.com/hanyuliu","https://www.linkedin.com/in/hanyu-liu-a180663a"],"url":"https://hanyuliu.me/"}</script>
 <!-- End Jekyll SEO tag -->
 
 
@@ -335,10 +335,43 @@
         </a>
       
     
+
+    <span class="icon-border"></span>
+    <button type="button" id="lang-toggle" aria-label="Language: All" title="Language: All"><span id="lang-toggle-icon">ALL</span></button>
   </div>
   <!-- .sidebar-bottom -->
 </aside>
 <!-- #sidebar -->
+
+<script>
+  (function () {
+    var postList = document.getElementById('post-list');
+    var btn = document.getElementById('lang-toggle');
+    if (!btn) return;
+
+    var icon = document.getElementById('lang-toggle-icon');
+    var states = [
+      { key: 'all', label: 'Language: All', icon: 'ALL' },
+      { key: 'en',  label: 'Language: EN',  icon: 'EN'  },
+      { key: 'zh',  label: 'Language: 中文', icon: '中'  }
+    ];
+    var current = 0;
+
+    btn.addEventListener('click', function () {
+      current = (current + 1) % states.length;
+      var state = states[current];
+      icon.textContent = state.icon;
+      btn.title = state.label;
+      btn.setAttribute('aria-label', state.label);
+      btn.classList.toggle('lang-active', state.key !== 'all');
+      if (!postList) return;
+      postList.querySelectorAll('article').forEach(function (article) {
+        var show = state.key === 'all' || article.getAttribute('data-lang') === state.key;
+        article.style.display = show ? '' : 'none';
+      });
+    });
+  })();
+</script>
 
 
     <div id="main-wrapper" class="d-flex justify-content-center">
@@ -476,13 +509,6 @@
 
 
 
-
-<!-- Language filter -->
-<div id="lang-filter" class="d-flex gap-2 mb-3 px-xl-1">
-  <button class="btn btn-sm btn-primary lang-btn active" data-lang="all">All</button>
-  <button class="btn btn-sm btn-outline-secondary lang-btn" data-lang="en">EN</button>
-  <button class="btn btn-sm btn-outline-secondary lang-btn" data-lang="zh">中文</button>
-</div>
 
 <div id="post-list" class="flex-grow-1 px-xl-1">
   
@@ -772,27 +798,6 @@
 <!-- #post-list -->
 
 
-
-<script>
-  (function () {
-    var btns = document.querySelectorAll('.lang-btn');
-    btns.forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var selected = this.getAttribute('data-lang');
-        btns.forEach(function (b) {
-          b.classList.remove('active', 'btn-primary');
-          b.classList.add('btn-outline-secondary');
-        });
-        this.classList.add('active', 'btn-primary');
-        this.classList.remove('btn-outline-secondary');
-        document.querySelectorAll('#post-list article').forEach(function (article) {
-          var show = selected === 'all' || article.getAttribute('data-lang') === selected;
-          article.style.display = show ? '' : 'none';
-        });
-      });
-    });
-  })();
-</script>
 
 
             

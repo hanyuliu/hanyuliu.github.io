@@ -46,13 +46,6 @@ layout: default
   {% endfor %}
 {% endif %}
 
-<!-- Language filter -->
-<div id="lang-filter" class="d-flex gap-2 mb-3 px-xl-1">
-  <button class="btn btn-sm btn-primary lang-btn active" data-lang="all">All</button>
-  <button class="btn btn-sm btn-outline-secondary lang-btn" data-lang="en">EN</button>
-  <button class="btn btn-sm btn-outline-secondary lang-btn" data-lang="zh">中文</button>
-</div>
-
 <div id="post-list" class="flex-grow-1 px-xl-1">
   {% for post in posts %}
     {% assign post_lang = post.lang | default: 'en' %}
@@ -146,24 +139,3 @@ layout: default
 {% if paginator.total_pages > 1 %}
   {% include post-paginator.html %}
 {% endif %}
-
-<script>
-  (function () {
-    var btns = document.querySelectorAll('.lang-btn');
-    btns.forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var selected = this.getAttribute('data-lang');
-        btns.forEach(function (b) {
-          b.classList.remove('active', 'btn-primary');
-          b.classList.add('btn-outline-secondary');
-        });
-        this.classList.add('active', 'btn-primary');
-        this.classList.remove('btn-outline-secondary');
-        document.querySelectorAll('#post-list article').forEach(function (article) {
-          var show = selected === 'all' || article.getAttribute('data-lang') === selected;
-          article.style.display = show ? '' : 'none';
-        });
-      });
-    });
-  })();
-</script>
