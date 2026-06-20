@@ -27,9 +27,15 @@ avatar: /assets/img/my_icon.jpeg
 toc: true
 
 comments:
-  active: disqus
-  disqus:
-    shortname: hanyuliu-me
+  provider: giscus
+  giscus:
+    repo: hanyuliu/hanyuliu.github.io
+    repo_id: MDEwOlJlcG9zaXRvcnk4MjQyMjIzNA==
+    category: Announcements
+    category_id: DIC_kwDOBOmp2s4C_gvW
+    mapping: pathname
+    reactions_enabled: 1
+    input_position: bottom
 
 pwa:
   enabled: true
