@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-06-19T19:09:52-07:00</updated>
+  <updated>2026-06-30T23:46:52-07:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,32 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>Securing a Multi-Tenant Temporal Service: Auth from Trigger to Worker</title>
+    <link href="http://localhost:4000/posts/securing-temporal-auth-trigger-to-worker/" rel="alternate" type="text/html" title="Securing a Multi-Tenant Temporal Service: Auth from Trigger to Worker" />
+    <published>2026-06-30T00:00:00-07:00</published>
+  
+    <updated>2026-06-30T00:00:00-07:00</updated>
+  
+    <id>http://localhost:4000/posts/securing-temporal-auth-trigger-to-worker/</id>
+    <content type="text/html" src="http://localhost:4000/posts/securing-temporal-auth-trigger-to-worker/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="Engineering" />
+    
+    <category term="Distributed Systems" />
+    
+  
+
+  <summary>When you build a service on top of Temporal, you quickly run into a problem that pure request/response systems never have to deal with: the person who kicked off the work is no longer in the room when the work actually happens.  A user hits your trigger, your trigger hands a task to Temporal, and then some worker — maybe running on someone else’s infrastructure, maybe hours later — picks it up ...</summary>
+
+  </entry>
 
   
   <entry>
@@ -115,30 +141,6 @@
   
 
   <summary>Modern AI agent UX expects streaming: tokens as the model thinks, intermediate reasoning and tool progress as it happens, sub-agent and tool output relayed through the parent, and a side channel for interruption, follow-up input, or human-in-the-loop approval. Most of these are bidirectional. The orchestration around them—retries, tool fan-out, multi-step processing, durable execution, replay o...</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>Install Lineage OS on Samsung S3</title>
-    <link href="http://localhost:4000/posts/install-lineage-os-to-s3/" rel="alternate" type="text/html" title="Install Lineage OS on Samsung S3" />
-    <published>2017-03-21T01:00:00-07:00</published>
-  
-    <updated>2017-03-21T01:00:00-07:00</updated>
-  
-    <id>http://localhost:4000/posts/install-lineage-os-to-s3/</id>
-    <content type="text/html" src="http://localhost:4000/posts/install-lineage-os-to-s3/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="General" />
-    
-  
-
-  <summary>Lineage OS is the successor of popular Android distribution, CyanogenMod. In this post, let’s install Lineage OS on a Samsumg S3 phone to try this brand new OS published late last year.  Root your device  Please refer this link to root yoour device.  Install bootloader  Before install bootloader, you may need to unlock the bootloader. I have a Verizon S3, so I use this link to unlock first. Aft...</summary>
 
   </entry>
 
