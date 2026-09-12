@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-09-12T00:10:18-07:00</updated>
+  <updated>2026-09-12T00:25:41-07:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,30 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>recall: Bring Your Terminal Back When a Long Job Finishes</title>
+    <link href="http://localhost:4000/posts/recall-terminal-notifications/" rel="alternate" type="text/html" title="recall: Bring Your Terminal Back When a Long Job Finishes" />
+    <published>2026-09-12T00:00:00-07:00</published>
+  
+    <updated>2026-09-12T00:00:00-07:00</updated>
+  
+    <id>http://localhost:4000/posts/recall-terminal-notifications/</id>
+    <content type="text/html" src="http://localhost:4000/posts/recall-terminal-notifications/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="Announcement" />
+    
+  
+
+  <summary>I published a small macOS CLI tool called recall. Here is what it is, what it does, and how to turn it on.  What it is  recall is a one-line command you drop at the end of anything that takes a while. When it runs, it posts a native macOS notification, and when you click that notification, it brings the exact terminal window that ran the command back to the front — even if that window is minimi...</summary>
+
+  </entry>
 
   
   <entry>
@@ -117,30 +141,6 @@
   
 
   <summary>I just published the first three episodes on my new YouTube channel, EarLearner. Here is what it is and why I built it.  The idea  I spend a lot of time in transit — driving, commuting, waiting — where my hands and eyes are occupied but my mind is free. Podcasts fill that window well, but I kept wanting something more structured: content that actually teaches rather than just discusses.  Most t...</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>手边只有榔头，却能想办法把螺丝拧好</title>
-    <link href="http://localhost:4000/posts/hammer-and-screws/" rel="alternate" type="text/html" title="手边只有榔头，却能想办法把螺丝拧好" />
-    <published>2026-06-17T00:00:00-07:00</published>
-  
-    <updated>2026-06-17T00:00:00-07:00</updated>
-  
-    <id>http://localhost:4000/posts/hammer-and-screws/</id>
-    <content type="text/html" src="http://localhost:4000/posts/hammer-and-screws/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="Thoughts" />
-    
-  
-
-  <summary>工作中，我最佩服的是这样一种人——手边只有榔头，却能想办法把螺丝优雅巧妙的拧好。 这不是阴阳怪气的表达，而是描述一种在现实约束下，以创造力和责任心，在有限的条件里聚沙成塔的能力。这种工程能力，远比那些有系统设计洁癖、稍遇变化就绕道回避、甚至动辄高谈阔论给逃避找借口，更值得尊重，也更值得共事。</summary>
 
   </entry>
 
