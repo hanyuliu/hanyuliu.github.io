@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-09-12T00:25:41-07:00</updated>
+  <updated>2026-09-13T12:26:45-07:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,30 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>Let's Not Wait for AI's Damascus Moment</title>
+    <link href="http://localhost:4000/posts/ai-slow-down-damascus-moment/" rel="alternate" type="text/html" title="Let&amp;apos;s Not Wait for AI&amp;apos;s Damascus Moment" />
+    <published>2026-09-13T00:00:00-07:00</published>
+  
+    <updated>2026-09-13T00:00:00-07:00</updated>
+  
+    <id>http://localhost:4000/posts/ai-slow-down-damascus-moment/</id>
+    <content type="text/html" src="http://localhost:4000/posts/ai-slow-down-damascus-moment/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="Thoughts" />
+    
+  
+
+  <summary>After reading the debate about slowing down AI, I thought of two books I’d read before, as a military history enthusiast:     Command and Control: Nuclear Weapons, the Damascus Accident, and the Illusion of Safety by Eric Schlosser   The Limits of Safety: Organizations, Accidents, and Nuclear Weapons by Scott Sagan   Schlosser’s Command and Control opens with the story of Damascus, Arkansas, in...</summary>
+
+  </entry>
 
   
   <entry>
@@ -117,30 +141,6 @@
   
 
   <summary>You browse HuggingFace looking for a model to run locally, and the file list looks like this:  DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf DeepSeek-R1-Distill-Qwen-7B-Q5_K_L.gguf DeepSeek-R1-Distill-Qwen-7B-IQ4_XS.gguf DeepSeek-R1-Distill-Qwen-7B-Q6_K_L.gguf   What do you pick? The suffix is a compact encoding of four independent decisions: quantization method, bit depth, internal precision variant...</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>I Started an Audio Learning Channel: EarLearner</title>
-    <link href="http://localhost:4000/posts/earlearner-youtube-channel-launch/" rel="alternate" type="text/html" title="I Started an Audio Learning Channel: EarLearner" />
-    <published>2026-06-18T00:00:00-07:00</published>
-  
-    <updated>2026-06-18T00:00:00-07:00</updated>
-  
-    <id>http://localhost:4000/posts/earlearner-youtube-channel-launch/</id>
-    <content type="text/html" src="http://localhost:4000/posts/earlearner-youtube-channel-launch/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="Announcement" />
-    
-  
-
-  <summary>I just published the first three episodes on my new YouTube channel, EarLearner. Here is what it is and why I built it.  The idea  I spend a lot of time in transit — driving, commuting, waiting — where my hands and eyes are occupied but my mind is free. Podcasts fill that window well, but I kept wanting something more structured: content that actually teaches rather than just discusses.  Most t...</summary>
 
   </entry>
 
