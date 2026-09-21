@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-09-19T00:27:10-07:00</updated>
+  <updated>2026-09-20T23:45:25-07:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,30 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>千层饼与芝麻酱花卷</title>
+    <link href="http://localhost:4000/posts/scallion-pancake-vs-sesame-bun/" rel="alternate" type="text/html" title="千层饼与芝麻酱花卷" />
+    <published>2026-09-20T00:00:00-07:00</published>
+  
+    <updated>2026-09-20T00:00:00-07:00</updated>
+  
+    <id>http://localhost:4000/posts/scallion-pancake-vs-sesame-bun/</id>
+    <content type="text/html" src="http://localhost:4000/posts/scallion-pancake-vs-sesame-bun/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="Thoughts" />
+    
+  
+
+  <summary>左：千层饼；右：芝麻酱花卷。  我有一个 Vibe Coding 布道师朋友，他见我就问：”古法编程的屎山也多了去了，你怎么专挑 vibe coding 黑？”  我：不一样。古法编程的屎山像千层饼，一层一层堆上去的，有地质结构的层次特征。配上 git log，你还能考古，层与层之间的逻辑是找得到的。Vibe coding 的屎山像芝麻酱花卷，你 coding 一次，新屎老屎就从头到尾揉一遍，最后拧成一团。千层饼你能一层一层揭开，花卷……你连从哪儿下口都不知道。  他想了想：那我让 AI 重构一下不就行了？  我：……那是再抹一层芝麻酱，再揉一遍。</summary>
+
+  </entry>
 
   
   <entry>
@@ -115,32 +139,6 @@
   
 
   <summary>There’s a lot of debate about whether — and how much — you should review the code your AI coding agent generates. Can you vibe-code this feature? Do you need to fully understand AI-generated code before it ships? Can you skip review if an AI coding agent already reviewed it? Do you need to split your PR just to keep it human-readable?  These are reasonable questions, and plenty of people have a...</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>Securing a Multi-Tenant Temporal Service: Auth from Trigger to Worker</title>
-    <link href="http://localhost:4000/posts/securing-temporal-auth-trigger-to-worker/" rel="alternate" type="text/html" title="Securing a Multi-Tenant Temporal Service: Auth from Trigger to Worker" />
-    <published>2026-06-30T00:00:00-07:00</published>
-  
-    <updated>2026-06-30T00:00:00-07:00</updated>
-  
-    <id>http://localhost:4000/posts/securing-temporal-auth-trigger-to-worker/</id>
-    <content type="text/html" src="http://localhost:4000/posts/securing-temporal-auth-trigger-to-worker/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="Engineering" />
-    
-    <category term="Distributed Systems" />
-    
-  
-
-  <summary>When you build a service on top of Temporal, you quickly run into a problem that pure request/response systems never have to deal with: the person who kicked off the work is no longer in the room when the work actually happens.  A user hits your trigger, your trigger hands a task to Temporal, and then some worker — maybe running on someone else’s infrastructure, maybe hours later — picks it up ...</summary>
 
   </entry>
 
