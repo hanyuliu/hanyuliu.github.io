@@ -1,5 +1,5 @@
 ---
-title: "What Happens When a Deep Agent's Tool Result Exceeds Temporal's Payload Limits"
+title: "Temporal's Deep Agents Integration and Payload Limits"
 date: 2026-09-25 00:00:00 -0700
 categories: [AI, Agents]
 tags: [temporal, deepagents, langchain, durable-execution, grpc, ai-agents]

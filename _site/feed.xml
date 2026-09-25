@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-09-25T01:13:39-07:00</updated>
+  <updated>2026-09-25T01:25:04-07:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -20,8 +20,8 @@
 
   
   <entry>
-    <title>What Happens When a Deep Agent's Tool Result Exceeds Temporal's Payload Limits</title>
-    <link href="http://localhost:4000/posts/temporal-deep-agent-payload-limits/" rel="alternate" type="text/html" title="What Happens When a Deep Agent&amp;apos;s Tool Result Exceeds Temporal&amp;apos;s Payload Limits" />
+    <title>Temporal's Deep Agents Integration and Payload Limits</title>
+    <link href="http://localhost:4000/posts/temporal-deep-agent-payload-limits/" rel="alternate" type="text/html" title="Temporal&amp;apos;s Deep Agents Integration and Payload Limits" />
     <published>2026-09-25T00:00:00-07:00</published>
   
     <updated>2026-09-25T00:00:00-07:00</updated>
