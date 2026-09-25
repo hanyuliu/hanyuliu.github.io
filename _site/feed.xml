@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-09-20T23:45:25-07:00</updated>
+  <updated>2026-09-25T01:13:39-07:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,32 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>What Happens When a Deep Agent's Tool Result Exceeds Temporal's Payload Limits</title>
+    <link href="http://localhost:4000/posts/temporal-deep-agent-payload-limits/" rel="alternate" type="text/html" title="What Happens When a Deep Agent&amp;apos;s Tool Result Exceeds Temporal&amp;apos;s Payload Limits" />
+    <published>2026-09-25T00:00:00-07:00</published>
+  
+    <updated>2026-09-25T00:00:00-07:00</updated>
+  
+    <id>http://localhost:4000/posts/temporal-deep-agent-payload-limits/</id>
+    <content type="text/html" src="http://localhost:4000/posts/temporal-deep-agent-payload-limits/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="AI" />
+    
+    <category term="Agents" />
+    
+  
+
+  <summary>Temporal is a durable execution framework. It recently added a developer-preview integration for LangChain Deep Agents — the package is temporalio.contrib.deepagents, and it still carries an “experimental, may change” warning. The idea is simple: take an existing Deep Agents program and make it durable — crash-safe, retryable, resumable — by adding one plugin. No changes to the agent code itsel...</summary>
+
+  </entry>
 
   
   <entry>
@@ -113,32 +139,6 @@
   
 
   <summary>I published a small macOS CLI tool called recall. Here is what it is, what it does, and how to turn it on.  What it is  recall is a one-line command you drop at the end of anything that takes a while. When it runs, it posts a native macOS notification, and when you click that notification, it brings the exact terminal window that ran the command back to the front — even if that window is minimi...</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>Reviewing Your AI Agent's Code Is About De-Risking, Not Resisting New Technology</title>
-    <link href="http://localhost:4000/posts/reviewing-ai-agents-code/" rel="alternate" type="text/html" title="Reviewing Your AI Agent&amp;apos;s Code Is About De-Risking, Not Resisting New Technology" />
-    <published>2026-08-02T00:00:00-07:00</published>
-  
-    <updated>2026-08-02T00:00:00-07:00</updated>
-  
-    <id>http://localhost:4000/posts/reviewing-ai-agents-code/</id>
-    <content type="text/html" src="http://localhost:4000/posts/reviewing-ai-agents-code/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="Engineering" />
-    
-    <category term="AI" />
-    
-  
-
-  <summary>There’s a lot of debate about whether — and how much — you should review the code your AI coding agent generates. Can you vibe-code this feature? Do you need to fully understand AI-generated code before it ships? Can you skip review if an AI coding agent already reviewed it? Do you need to split your PR just to keep it human-readable?  These are reasonable questions, and plenty of people have a...</summary>
 
   </entry>
 
