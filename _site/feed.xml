@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-09-25T01:25:04-07:00</updated>
+  <updated>2026-10-08T00:31:26-07:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,32 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>DeepSeek Harness: Letting the Agent Build Its Own UI</title>
+    <link href="http://localhost:4000/posts/deepseek-harness-agent-built-ui/" rel="alternate" type="text/html" title="DeepSeek Harness: Letting the Agent Build Its Own UI" />
+    <published>2026-10-07T20:00:00-07:00</published>
+  
+    <updated>2026-10-07T20:00:00-07:00</updated>
+  
+    <id>http://localhost:4000/posts/deepseek-harness-agent-built-ui/</id>
+    <content type="text/html" src="http://localhost:4000/posts/deepseek-harness-agent-built-ui/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="Engineering" />
+    
+    <category term="Programming Languages" />
+    
+  
+
+  <summary>On October 7, OpenAI released Intelligent UI in ChatGPT. Instead of always answering with text, ChatGPT can now answer with charts, buttons, forms, and small interactive tools.  It reminded me of something I’ve been playing with for a while: DeepSeek Harness, where the agent can build new UI as a plugin while it runs. In this post, I’ll share what I learned from the paper behind it, and walk th...</summary>
+
+  </entry>
 
   
   <entry>
@@ -115,30 +141,6 @@
   
 
   <summary>After reading the debate about slowing down AI, I thought of two books I’d read before, as a military history enthusiast:     Command and Control: Nuclear Weapons, the Damascus Accident, and the Illusion of Safety by Eric Schlosser   The Limits of Safety: Organizations, Accidents, and Nuclear Weapons by Scott Sagan   Schlosser’s Command and Control opens with the story of Damascus, Arkansas, in...</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>recall: Bring Your Terminal Back When a Long Job Finishes</title>
-    <link href="http://localhost:4000/posts/recall-terminal-notifications/" rel="alternate" type="text/html" title="recall: Bring Your Terminal Back When a Long Job Finishes" />
-    <published>2026-09-12T00:00:00-07:00</published>
-  
-    <updated>2026-09-12T00:00:00-07:00</updated>
-  
-    <id>http://localhost:4000/posts/recall-terminal-notifications/</id>
-    <content type="text/html" src="http://localhost:4000/posts/recall-terminal-notifications/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="Announcement" />
-    
-  
-
-  <summary>I published a small macOS CLI tool called recall. Here is what it is, what it does, and how to turn it on.  What it is  recall is a one-line command you drop at the end of anything that takes a while. When it runs, it posts a native macOS notification, and when you click that notification, it brings the exact terminal window that ran the command back to the front — even if that window is minimi...</summary>
 
   </entry>
 
