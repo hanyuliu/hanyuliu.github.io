@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-10-08T00:36:29-07:00</updated>
+  <updated>2026-10-08T23:17:30-07:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,32 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>Spatiotemporal Composability: The Calculus, the Proofs, and Cordis</title>
+    <link href="http://localhost:4000/posts/spatiotemporal-composability-calculus/" rel="alternate" type="text/html" title="Spatiotemporal Composability: The Calculus, the Proofs, and Cordis" />
+    <published>2026-10-08T10:00:00-07:00</published>
+  
+    <updated>2026-10-08T10:00:00-07:00</updated>
+  
+    <id>http://localhost:4000/posts/spatiotemporal-composability-calculus/</id>
+    <content type="text/html" src="http://localhost:4000/posts/spatiotemporal-composability-calculus/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="Engineering" />
+    
+    <category term="Programming Languages" />
+    
+  
+
+  <summary>This is the second of two posts on A Programming Paradigm for Spatiotemporal Composability by Yifan Shi, Wei Zhang, and Tianyi Cui. The first post showed the agent in DeepSeek Harness building and removing its own UI, and gave the paper’s big ideas: revertible effects and reactive coeffects. This post goes into the details. I’ll cover the notation, the small calculus the paper builds, the theor...</summary>
+
+  </entry>
 
   
   <entry>
@@ -117,30 +143,6 @@
   
 
   <summary>I’ve been experimenting with on-device LLMs, and llama.cpp is the most practical way to run one on a phone: fast on CPU, GGUF quantization keeps memory usage sane, and it builds cleanly with the NDK once you know the right flags.  Here’s the setup, step by step, with the gotchas that aren’t in the official docs.     Every step below is boilerplate I’ve actually built and run, not theory — safe ...</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>Let's Not Wait for AI's Damascus Moment</title>
-    <link href="http://localhost:4000/posts/ai-slow-down-damascus-moment/" rel="alternate" type="text/html" title="Let&amp;apos;s Not Wait for AI&amp;apos;s Damascus Moment" />
-    <published>2026-09-13T00:00:00-07:00</published>
-  
-    <updated>2026-09-13T00:00:00-07:00</updated>
-  
-    <id>http://localhost:4000/posts/ai-slow-down-damascus-moment/</id>
-    <content type="text/html" src="http://localhost:4000/posts/ai-slow-down-damascus-moment/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="Thoughts" />
-    
-  
-
-  <summary>After reading the debate about slowing down AI, I thought of two books I’d read before, as a military history enthusiast:     Command and Control: Nuclear Weapons, the Damascus Accident, and the Illusion of Safety by Eric Schlosser   The Limits of Safety: Organizations, Accidents, and Nuclear Weapons by Scott Sagan   Schlosser’s Command and Control opens with the story of Damascus, Arkansas, in...</summary>
 
   </entry>
 
