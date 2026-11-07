@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inside Pi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="layout">
+<aside class="rail">
+<details class="rail-inner" open>
+<summary><a class="brand" href="index.html">Inside Pi</a>
+<span class="snapshot"><a href="https://github.com/earendil-works/pi/tree/195120a9156b79b0fab67d3a458b5315bed7a33f" target="_blank" rel="noopener">pi @ <code>195120a91</code></a></span></summary>
+<nav><ul class="nav-list"><li><a href="index.html" aria-current="page">Overview</a><ul class="toc"><li class="toc-2"><a href="#modules">Modules</a></li><li class="toc-2"><a href="#code-map">Code map</a></li><li class="toc-2"><a href="#how-the-modules-connect">How the modules connect</a></li><li class="toc-2"><a href="#key-flows">Key flows</a></li><li class="toc-2"><a href="#glossary">Glossary</a></li><li class="toc-2"><a href="#reading-order">Reading order</a></li></ul></li></ul><p class="nav-group">agent</p><ul class="nav-list"><li><a href="agent/agent-loop.html">agent-loop</a></li></ul></nav>
+<div class="legend" aria-label="Color legend">
+<p class="nav-group">reading the code</p>
+<ul>
+<li><span class="t-symbol">blue</span> code name, search the code for it</li>
+<li><span class="t-symbol t-inline">italic</span> named for reading, not in the code; ▸ opens it</li>
+<li><span class="t-type">teal</span> type or class</li>
+<li><span class="t-module">orange</span> crosses into another module</li>
+<li><span class="t-keyword">bold</span> structure</li>
+<li>plain text is a summary</li>
+<li><span class="t-rule-must">MUST</span> <span class="t-rule-should">SHOULD</span> <span class="t-rule-may">MAY</span> rule strength</li>
+<li><span class="t-why"><span class="t-why-lbl">// why:</span></span> keep this behavior</li>
+</ul></div>
+</details>
+</aside>
+<main class="doc doc-module">
+<h1 id="inside-pi"><a class="anchor" href="#inside-pi" aria-hidden="true">#</a>Inside Pi</h1>
+<blockquote>
+<p>Reference pages for the &quot;Inside Pi&quot; blog series. Each module page explains one part of the Pi coding agent in pseudocode, and links every function back to the real code.</p>
+</blockquote>
+<dl class="meta"><dt>repo</dt><dd><a href="https://github.com/earendil-works/pi">github.com/earendil-works/pi</a></dd><dt>commit</dt><dd><a href="https://github.com/earendil-works/pi/tree/195120a9156b79b0fab67d3a458b5315bed7a33f"><code>195120a91</code></a></dd></dl><p>The blog posts tell the story. These pages are the details behind them, for
+when you want to read or change the code. Start with the post
+<a href="/posts/inside-pi-the-agent-loop/">Inside Pi: The Agent Loop</a>.</p>
+<h2 id="modules"><a class="anchor" href="#modules" aria-hidden="true">#</a>Modules</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Summary</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>agent-loop</td>
+<td>Call the model, run the tools it asks for, add the results, repeat; with hooks for every step</td>
+<td><a href="agent/agent-loop.html">agent-loop</a></td>
+</tr>
+<tr>
+<td>Everything else</td>
+<td>The Agent wrapper, tools, sessions, compaction, providers, the terminal UI</td>
+<td>coming with later posts</td>
+</tr>
+</tbody></table>
+</div><h2 id="code-map"><a class="anchor" href="#code-map" aria-hidden="true">#</a>Code map</h2>
+<pre class="pc"><code>packages/
+  agent/                    pi-agent-core
+    src/agent-loop.ts         the loop itself: runLoop(), agentLoop()     <span class="t-comment">→</span> <a class="t-ref" href="agent/agent-loop.html">agent/agent-loop.md</a>
+    src/types.ts              tools, hooks, and events                    <span class="t-comment">→</span> <a class="t-ref" href="agent/agent-loop.html">agent/agent-loop.md</a>
+    src/agent.ts              a stateful wrapper around the loop: next time
+  ai/                       pi-ai: talks to ~40 LLM providers: next time
+  coding-agent/             the `pi` command, built on top of the loop: next time
+  tui/, chord/, codemode/, durable/, env/, mcp/, telemetry/, evals/   not covered here</code></pre><h2 id="how-the-modules-connect"><a class="anchor" href="#how-the-modules-connect" aria-hidden="true">#</a>How the modules connect</h2>
+<p>The loop sits in the middle. The coding agent calls into it, and it calls out
+to the model through a function it&#39;s handed (<code>streamFn</code>). It never imports the
+coding agent, which is why it&#39;s easy to reuse.</p>
+<pre class="mermaid">graph TD
+    codingAgent[coding-agent] --&gt; agentLoop[agent-loop]
+    agentLoop -. &quot;streamFn&quot; .-&gt; ai[pi-ai: about 40 LLM providers]
+    agentLoop -. &quot;tool.execute&quot; .-&gt; tools[tools: read, bash, edit, write]</pre><h2 id="key-flows"><a class="anchor" href="#key-flows" aria-hidden="true">#</a>Key flows</h2>
+<p>The blog post walks through three runs as sequence diagrams: one turn with a
+tool call, the user typing while the agent works, and the model getting cut off.
+See <a href="/posts/inside-pi-the-agent-loop/#three-runs-step-by-step">Inside Pi: The Agent Loop</a>.</p>
+<h2 id="glossary"><a class="anchor" href="#glossary" aria-hidden="true">#</a>Glossary</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Turn</td>
+<td>One reply from the model, plus the tools it called and their results</td>
+</tr>
+<tr>
+<td>Run</td>
+<td>Everything from one prompt until the loop stops; can be many turns</td>
+</tr>
+<tr>
+<td>Tool call</td>
+<td>A request from the model to run a tool with some arguments</td>
+</tr>
+<tr>
+<td>Hook</td>
+<td>An optional function in the config that the loop calls at a fixed point, so the host can watch or change what happens</td>
+</tr>
+<tr>
+<td>Steering message</td>
+<td>Something the user typed during a run; added after the current turn&#39;s tools finish</td>
+</tr>
+<tr>
+<td>Follow-up message</td>
+<td>Something that waits until the agent would otherwise stop</td>
+</tr>
+<tr>
+<td><code>transcript.</code></td>
+<td>Prefix for helpers from pi-ai&#39;s <code>packages/ai/src/utils/transcript.ts</code>, which read and normalize the conversation</td>
+</tr>
+<tr>
+<td><code>stopReason</code></td>
+<td>Why the model stopped: <code>stop</code> (done), <code>toolUse</code> (wants tools), <code>length</code> (ran out of tokens), <code>error</code>, or <code>aborted</code></td>
+</tr>
+<tr>
+<td>Rules</td>
+<td>Promises the loop keeps on every run (<code>MUST</code>, <code>MUST NOT</code>, <code>SHOULD</code>)</td>
+</tr>
+<tr>
+<td>Examples</td>
+<td>Concrete scenarios taken from Pi&#39;s own tests, written as Given / When / Then</td>
+</tr>
+</tbody></table>
+</div><h2 id="reading-order"><a class="anchor" href="#reading-order" aria-hidden="true">#</a>Reading order</h2>
+<ol>
+<li><a href="agent/agent-loop.html">agent-loop</a>. Start with <a class="code-link" href="agent/agent-loop.html#runloop"><code>runLoop</code></a>, then follow whichever helper catches your eye. The Rules and Examples at the end are a quick way to see what the loop promises.</li>
+</ol>
+
+</main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(function () {
+  try {
+    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    window.mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "strict" });
+  } catch (e) {}
+  var rail = document.querySelector(".rail-inner");
+  if (rail && window.matchMedia("(max-width: 900px)").matches) rail.open = false;
+  document.querySelectorAll(".fold-tools button").forEach(function (b) {
+    var pre = b.parentElement.nextElementSibling;
+    b.addEventListener("click", function () {
+      var open = b.dataset.fold === "open";
+      pre.querySelectorAll("details.fold").forEach(function (d) { d.open = open; });
+      b.dataset.fold = open ? "close" : "open";
+      b.textContent = open ? "close all ▾" : "open all ▸";
+    });
+  });
+})();
+</script>
+</body>
+</html>

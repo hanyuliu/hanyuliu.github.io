@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-10-08T23:17:30-07:00</updated>
+  <updated>2026-11-06T22:54:54-08:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,32 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>Inside Pi: The Agent Loop</title>
+    <link href="http://localhost:4000/posts/inside-pi-the-agent-loop/" rel="alternate" type="text/html" title="Inside Pi: The Agent Loop" />
+    <published>2026-11-05T10:00:00-08:00</published>
+  
+    <updated>2026-11-05T10:00:00-08:00</updated>
+  
+    <id>http://localhost:4000/posts/inside-pi-the-agent-loop/</id>
+    <content type="text/html" src="http://localhost:4000/posts/inside-pi-the-agent-loop/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="AI" />
+    
+    <category term="Agents" />
+    
+  
+
+  <summary>Pi is a small, hackable coding agent that runs in your terminal. You give it a task, it talks to an LLM, and the LLM uses tools like “read this file” or “run this command” until the task is done.  I’ve been reading Pi’s code, and this is the first post in a series about how it works inside. I’m starting with the agent loop, because everything else in Pi hangs off it. Once you see how small and ...</summary>
+
+  </entry>
 
   
   <entry>
@@ -117,32 +143,6 @@
   
 
   <summary>左：千层饼；右：芝麻酱花卷。  我有一个 Vibe Coding 布道师朋友，他见我就问：”古法编程的屎山也多了去了，你怎么专挑 vibe coding 黑？”  我：不一样。古法编程的屎山像千层饼，一层一层堆上去的，有地质结构的层次特征。配上 git log，你还能考古，层与层之间的逻辑是找得到的。Vibe coding 的屎山像芝麻酱花卷，你 coding 一次，新屎老屎就从头到尾揉一遍，最后拧成一团。千层饼你能一层一层揭开，花卷……你连从哪儿下口都不知道。  他想了想：那我让 AI 重构一下不就行了？  我：……那是再抹一层芝麻酱，再揉一遍。</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>Running llama.cpp on Android</title>
-    <link href="http://localhost:4000/posts/running-llama-cpp-on-android/" rel="alternate" type="text/html" title="Running llama.cpp on Android" />
-    <published>2026-09-19T00:00:00-07:00</published>
-  
-    <updated>2026-09-19T00:00:00-07:00</updated>
-  
-    <id>http://localhost:4000/posts/running-llama-cpp-on-android/</id>
-    <content type="text/html" src="http://localhost:4000/posts/running-llama-cpp-on-android/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="AI" />
-    
-    <category term="Local LLMs" />
-    
-  
-
-  <summary>I’ve been experimenting with on-device LLMs, and llama.cpp is the most practical way to run one on a phone: fast on CPU, GGUF quantization keeps memory usage sane, and it builds cleanly with the NDK once you know the right flags.  Here’s the setup, step by step, with the gotchas that aren’t in the official docs.     Every step below is boilerplate I’ve actually built and run, not theory — safe ...</summary>
 
   </entry>
 

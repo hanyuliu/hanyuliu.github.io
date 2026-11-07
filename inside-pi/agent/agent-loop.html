@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>agent-loop · Inside Pi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="layout">
+<aside class="rail">
+<details class="rail-inner" open>
+<summary><a class="brand" href="../index.html">Inside Pi</a>
+<span class="snapshot"><a href="https://github.com/earendil-works/pi/tree/195120a9156b79b0fab67d3a458b5315bed7a33f" target="_blank" rel="noopener">pi @ <code>195120a91</code></a></span></summary>
+<nav><ul class="nav-list"><li><a href="../index.html">Overview</a></li></ul><p class="nav-group">agent</p><ul class="nav-list"><li><a href="agent-loop.html" aria-current="page">agent-loop</a><ul class="toc"><li class="toc-2"><a href="#contracts">Contracts</a></li><li class="toc-2"><a href="#behavior">Behavior</a></li><li class="toc-3"><a href="#runagentloop">runAgentLoop</a></li><li class="toc-3"><a href="#runagentloopcontinue">runAgentLoopContinue</a></li><li class="toc-3"><a href="#runloop">runLoop</a></li><li class="toc-3"><a href="#applynextturnupdate">applyNextTurnUpdate</a></li><li class="toc-3"><a href="#runtoolbatch">runToolBatch</a></li><li class="toc-3"><a href="#declaretoolchanges">declareToolChanges</a></li><li class="toc-3"><a href="#streamassistantresponse">streamAssistantResponse</a></li><li class="toc-3"><a href="#failtoolcallsfromtruncatedmessage">failToolCallsFromTruncatedMessage</a></li><li class="toc-3"><a href="#executetoolcalls">executeToolCalls</a></li><li class="toc-3"><a href="#executetoolcallsparallel">executeToolCallsParallel</a></li><li class="toc-3"><a href="#preparetoolcall">prepareToolCall</a></li><li class="toc-3"><a href="#executepreparedtoolcall">executePreparedToolCall</a></li><li class="toc-3"><a href="#finalizeexecutedtoolcall">finalizeExecutedToolCall</a></li><li class="toc-3"><a href="#runtoolcall">runToolCall</a></li><li class="toc-2"><a href="#rules">Rules</a></li><li class="toc-2"><a href="#examples">Examples</a></li><li class="toc-2"><a href="#notes">Notes</a></li><li class="toc-2"><a href="#source-map">Source map</a></li></ul></li></ul></nav>
+<div class="legend" aria-label="Color legend">
+<p class="nav-group">reading the code</p>
+<ul>
+<li><span class="t-symbol">blue</span> code name, search the code for it</li>
+<li><span class="t-symbol t-inline">italic</span> named for reading, not in the code; ▸ opens it</li>
+<li><span class="t-type">teal</span> type or class</li>
+<li><span class="t-module">orange</span> crosses into another module</li>
+<li><span class="t-keyword">bold</span> structure</li>
+<li>plain text is a summary</li>
+<li><span class="t-rule-must">MUST</span> <span class="t-rule-should">SHOULD</span> <span class="t-rule-may">MAY</span> rule strength</li>
+<li><span class="t-why"><span class="t-why-lbl">// why:</span></span> keep this behavior</li>
+</ul></div>
+</details>
+</aside>
+<main class="doc doc-module">
+<h1 id="module-agent-loop"><a class="anchor" href="#module-agent-loop" aria-hidden="true">#</a>Module: agent-loop</h1>
+<blockquote>
+<p>The loop at the center of Pi. It sends the conversation to the model, runs whatever tools the model asks for, adds the results, and goes around again until the model is done.</p>
+</blockquote>
+<p>Every coding agent has a loop like this somewhere. What I like about Pi&#39;s is how
+little it does on its own. The whole thing is one function of about 160 lines,
+<a class="code-link" href="#runloop"><code>runLoop</code></a>, plus helpers for running tools. It keeps no state between runs. You
+hand it a conversation, a list of tools, and a config object full of optional
+hooks, and it reports everything it does as a stream of events.</p>
+<p>All the clever parts of Pi (saving sessions, compaction, retries, plugins that
+block dangerous commands) live <em>outside</em> the loop and plug into those hooks.
+That keeps the loop easy to read and easy to trust.</p>
+<p>One more thing worth knowing up front: the loop works with <code>AgentMessage</code>, which
+can include app-specific message types. It only turns them into plain LLM
+messages at the last moment, right before calling the model.</p>
+<dl class="meta"><dt>module</dt><dd>agent-loop</dd><dt>files</dt><dd><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts">packages/agent/src/agent-loop.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/types.ts">packages/agent/src/types.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/stream-fn.ts">packages/agent/src/stream-fn.ts</a></span></dd><dt>depends</dt><dd><span class="meta-item">ai</span></dd><dt>used-by</dt><dd><span class="meta-item">agent</span><span class="meta-item">coding-agent</span></dd></dl><h2 id="contracts"><a class="anchor" href="#contracts" aria-hidden="true">#</a>Contracts</h2>
+<p>You don&#39;t need every type to follow the loop. These are the ones the pseudocode
+below uses, cut down to the fields that matter. Skipped fields are listed in a
+comment at the end of each type.</p>
+<p>What the loop gets: a conversation, the tools it may run, and a function that
+calls the model.</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-AgentContext">AgentContext</span> = {
+    messages: <span class="t-type">AgentMessage</span>[],      <span class="t-comment">// the conversation; apps can add their own message types</span>
+    tools: <a class="t-type t-link" href="#def-AgentTool" title="AgentTool · agent-loop">AgentTool</a>[]?,           <span class="t-comment">// the tools the loop is allowed to run</span>
+}
+
+<span class="t-keyword">type</span> <span class="t-type t-def" id="def-StreamFn">StreamFn</span> = (model, context, options?) -&gt; <span class="t-type">AssistantMessageEventStream</span>
+    <span class="t-comment">// never throws: a failure ends the stream with stopReason &quot;error&quot; or &quot;aborted&quot;</span></code></pre><p>Tools. A tool is a name, a description, and a JSON schema for its arguments
+(that&#39;s the <code>Tool</code> part), plus an <code>execute</code> function.</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-AgentTool">AgentTool</span> = <span class="t-type">Tool</span> &amp; {
+    execute: <span class="t-keyword">async</span> <span class="t-keyword">fn</span>(<span class="t-symbol">toolCallId</span>, params, signal?, <span class="t-symbol">onUpdate</span>?) -&gt; <a class="t-type t-link" href="#def-AgentToolResult" title="AgentToolResult · agent-loop">AgentToolResult</a>,
+    <span class="t-symbol">executionMode</span>: <span class="t-literal">&quot;sequential&quot;</span> | <span class="t-literal">&quot;parallel&quot;</span> ?,    <span class="t-comment">// &quot;sequential&quot; makes the whole batch run one by one</span>
+    <span class="t-comment">// skipped: label, prepareArguments, outputSchema, replay</span>
+}
+
+<span class="t-keyword">type</span> <span class="t-type t-def" id="def-AgentToolResult">AgentToolResult</span> = {
+    content: (<span class="t-type">TextContent</span> | <span class="t-type">ImageContent</span>)[],       <span class="t-comment">// what the model sees</span>
+    <span class="t-symbol">isError</span>: <span class="t-type">Bool</span>?,                                <span class="t-comment">// report a failure without throwing</span>
+    terminate: <span class="t-type">Bool</span>?,                              <span class="t-comment">// hint: stop after this batch of tools</span>
+    <span class="t-comment">// skipped: details, structuredContent, usage (extra data for the UI and for code, never sent to the model)</span>
+}</code></pre><p>Hooks. Every hook is optional. This is where the host plugs in.</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-AgentLoopConfig">AgentLoopConfig</span> = {
+    model: <span class="t-type">Model</span>,
+    <span class="t-symbol">convertToLlm</span>: <span class="t-keyword">fn</span>(<span class="t-type">AgentMessage</span>[]) -&gt; <span class="t-type">Message</span>[],          <span class="t-comment">// turn app messages into plain LLM messages</span>
+    <span class="t-symbol">getApiKey</span>: <span class="t-keyword">fn</span>(provider) -&gt; <span class="t-type">String</span>? ?,                   <span class="t-comment">// asked before every request</span>
+    <span class="t-symbol">getSteeringMessages</span>: <span class="t-keyword">async</span> <span class="t-keyword">fn</span>() -&gt; <span class="t-type">AgentMessage</span>[] ?,    <span class="t-comment">// what the user typed mid-run</span>
+    <span class="t-symbol">getFollowUpMessages</span>: <span class="t-keyword">async</span> <span class="t-keyword">fn</span>() -&gt; <span class="t-type">AgentMessage</span>[] ?,    <span class="t-comment">// what waits until the agent would stop</span>
+    <span class="t-symbol">beforeToolCall</span>: <span class="t-keyword">async</span> <span class="t-keyword">fn</span>(call, signal) -&gt; { block?, reason?, terminate? } ?,
+    <span class="t-symbol">afterToolCall</span>: <span class="t-keyword">async</span> <span class="t-keyword">fn</span>(call, signal) -&gt; <span class="t-type">AfterToolCallResult</span>? ?,   <span class="t-comment">// each field it returns replaces the old one</span>
+    <span class="t-symbol">finishTurn</span>: <span class="t-keyword">async</span> <span class="t-keyword">fn</span>(turn, signal) -&gt; { action: <span class="t-literal">&quot;continue&quot;</span> | <span class="t-literal">&quot;end&quot;</span> }? ?,
+    <span class="t-symbol">toolExecution</span>: <span class="t-literal">&quot;sequential&quot;</span> | <span class="t-literal">&quot;parallel&quot;</span> ?,             <span class="t-comment">// default &quot;parallel&quot;</span>
+    <span class="t-comment">// skipped: transformContext, prepareRequest, prepareNextTurn (they swap the context or model</span>
+    <span class="t-comment">//          between requests), and the usual stream options like apiKey and reasoning</span>
+}</code></pre><p>Events. A <em>turn</em> is one reply from the model plus the tools it called. A <em>run</em>
+is everything from one prompt until the loop stops, which can be many turns.</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-AgentEvent">AgentEvent</span> =
+    <span class="t-symbol">agent_start</span> | <span class="t-symbol">agent_end</span> { messages }               <span class="t-comment">// agent_end is always the last event</span>
+  | <span class="t-symbol">turn_start</span>  | <span class="t-symbol">turn_end</span> { message, <span class="t-symbol">toolResults</span> }
+  | <span class="t-symbol">message_start</span> | <span class="t-symbol">message_update</span> | <span class="t-symbol">message_end</span>      <span class="t-comment">// message_update streams the model's reply</span>
+  | <span class="t-symbol">tool_execution_start</span> | <span class="t-symbol">tool_execution_update</span> | <span class="t-symbol">tool_execution_end</span> { result, <span class="t-symbol">isError</span> }</code></pre><p>Entry points.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">agentLoop</span>(prompts, context, config, signal, <span class="t-symbol">streamFn</span>) -&gt; <span class="t-type">EventStream</span>&lt;<a class="t-type t-link" href="#def-AgentEvent" title="AgentEvent · agent-loop">AgentEvent</a>, <span class="t-type">AgentMessage</span>[]&gt;
+<span class="t-keyword">fn</span> <span class="t-symbol">agentLoopContinue</span>(context, config, signal, <span class="t-symbol">streamFn</span>) -&gt; <span class="t-type">EventStream</span>&lt;<a class="t-type t-link" href="#def-AgentEvent" title="AgentEvent · agent-loop">AgentEvent</a>, <span class="t-type">AgentMessage</span>[]&gt;
+    <span class="t-comment">// runAgentLoop and runAgentLoopContinue do the same, but report events to a callback</span>
+<span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">runToolCall</span>(<span class="t-symbol">toolCall</span>, options) -&gt; <span class="t-type">AgentToolCallOutcome</span>   <span class="t-comment">// one tool call, for tools that call tools</span></code></pre><h2 id="behavior"><a class="anchor" href="#behavior" aria-hidden="true">#</a>Behavior</h2>
+<h3 id="runagentloop"><a class="anchor" href="#runagentloop" aria-hidden="true">#</a>runAgentLoop</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L102">runAgentLoop</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L38">agentLoop</a></span></div><p>This is where a run starts. It adds the new prompt to the conversation, tells
+listeners about it, and hands off to the main loop. <code>agentLoop</code> does the same
+thing but gives you the events as a stream you can iterate over.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">runAgentLoop</span>(prompts, context, config, <span class="t-keyword">emit</span>, signal, <span class="t-symbol">streamFn</span>) -&gt; <span class="t-type">AgentMessage</span>[]
+    initial = <a class="t-symbol t-link" href="#declaretoolchanges" title="declareToolChanges · agent-loop">declareToolChanges</a>(context, prompts)
+    <span class="t-symbol">newMessages</span> = copy of initial
+    current = context with messages = context.<span class="t-symbol">messages</span> + initial
+    <span class="t-keyword">emit</span> <span class="t-symbol">agent_start</span>
+    <span class="t-keyword">emit</span> <span class="t-symbol">turn_start</span>
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> message in initial:
+        <span class="t-keyword">emit</span> <span class="t-symbol">message_start</span>{message}
+        <span class="t-keyword">emit</span> <span class="t-symbol">message_end</span>{message}
+    <span class="t-keyword">await</span> <a class="t-symbol t-link" href="#runloop" title="runLoop · agent-loop">runLoop</a>(current, <span class="t-symbol">newMessages</span>, config, signal, <span class="t-keyword">emit</span>, <span class="t-symbol">streamFn</span> or <span class="t-symbol">getDefaultStreamFn</span>())
+    <span class="t-keyword">return</span> <span class="t-symbol">newMessages</span></code></pre><h3 id="runagentloopcontinue"><a class="anchor" href="#runagentloopcontinue" aria-hidden="true">#</a>runAgentLoopContinue</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L128">runAgentLoopContinue</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L71">agentLoopContinue</a></span></div><p>Picks up where the conversation left off without adding anything new. Pi uses
+this to retry after an error.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">runAgentLoopContinue</span>(context, config, <span class="t-keyword">emit</span>, signal, <span class="t-symbol">streamFn</span>) -&gt; <span class="t-type">AgentMessage</span>[]
+    <span class="t-keyword">if</span> context.<span class="t-symbol">messages</span> is <span class="t-literal">empty</span>:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Cannot continue: no messages in context&quot;</span>)
+    <span class="t-keyword">if</span> the last message is from the assistant:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Cannot continue from message role: assistant&quot;</span>)
+    <span class="t-symbol">newMessages</span> = []
+    <span class="t-keyword">emit</span> <span class="t-symbol">agent_start</span>
+    <span class="t-keyword">emit</span> <span class="t-symbol">turn_start</span>
+    <span class="t-keyword">await</span> <a class="t-symbol t-link" href="#runloop" title="runLoop · agent-loop">runLoop</a>(copy of context, <span class="t-symbol">newMessages</span>, config, signal, <span class="t-keyword">emit</span>, <span class="t-symbol">streamFn</span> or <span class="t-symbol">getDefaultStreamFn</span>())
+    <span class="t-keyword">return</span> <span class="t-symbol">newMessages</span>      <span class="t-comment">// only what this run added</span></code></pre><h3 id="runloop"><a class="anchor" href="#runloop" aria-hidden="true">#</a>runLoop</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L163">runLoop</a></span></div><p>The main loop. It&#39;s really two loops. The inner one keeps going while the model
+is calling tools or while the user has typed something in the meantime. When the
+inner loop would stop, the outer one checks for follow-up messages, and if there
+are any, goes around again.</p>
+<div class="fold-tools"><button type="button" data-fold="open">open all ▸</button></div><pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">runLoop</span>(context, <span class="t-symbol">newMessages</span>, config, signal, <span class="t-keyword">emit</span>, <span class="t-symbol">streamFn</span>)
+    pending = config.<span class="t-symbol">getSteeringMessages</span>?() or []     <span class="t-comment">// the user may have typed while we started</span>
+    <span class="t-keyword">loop</span>:
+        <span class="t-symbol">hasMoreToolCalls</span> = <span class="t-literal">true</span>
+        <span class="t-keyword">while</span> <span class="t-symbol">hasMoreToolCalls</span> or pending is not <span class="t-literal">empty</span>:
+            <span class="t-keyword">if</span> a previous turn finished:
+<details class="fold"><summary title="Show the 11 lines this name stands for">                <a class="t-symbol t-link t-inline" href="#applynextturnupdate" title="Not in the code: a named part of runLoop">applyNextTurnUpdate</a>()</summary><span class="fold-body" style="margin-left:16ch"><span class="fold-head"><a class="t-inline-head" href="#applynextturnupdate">applyNextTurnUpdate</a> <span>· not in the code, these 11 lines are part of runLoop</span></span><span class="fold-code">update = config.<span class="t-symbol">prepareNextTurn</span>?(<span class="t-symbol">lastCompletedTurn</span>)
+<span class="t-keyword">if</span> update:
+    context = update.<span class="t-symbol">context</span> or context
+    prepared = update.<span class="t-symbol">messages</span> or []
+    config.<span class="t-symbol">model</span> = update.<span class="t-symbol">model</span> or config.<span class="t-symbol">model</span>
+    config.<span class="t-symbol">reasoning</span> = update.<span class="t-symbol">thinkingLevel</span>, with <span class="t-literal">&quot;off&quot;</span> meaning none
+<span class="t-keyword">if</span> pending is <span class="t-literal">empty</span>:
+    pending = config.<span class="t-symbol">getSteeringMessages</span>?() or []
+    <span class="t-why"><span class="t-why-lbl">// why:</span> preparing can be slow (compaction calls the model), so pick up anything typed meanwhile.</span>
+    <span class="t-why">//      Only poll if the earlier poll was empty, or &quot;one at a time&quot; mode would deliver two.</span>
+<span class="t-keyword">emit</span> <span class="t-symbol">turn_start</span></span><span class="fold-foot">end of applyNextTurnUpdate · back to the call</span></span></details>            add <a class="t-symbol t-link" href="#declaretoolchanges" title="declareToolChanges · agent-loop">declareToolChanges</a>(context, prepared + pending) to the conversation,
+                emitting <span class="t-symbol">message_start</span> and <span class="t-symbol">message_end</span> <span class="t-keyword">for</span> <span class="t-keyword">each</span>
+            pending = []
+            apply config.<span class="t-symbol">prepareRequest</span>?(context, model, <span class="t-symbol">thinkingLevel</span>)   <span class="t-comment">// may swap context or model</span>
+            message = <a class="t-symbol t-link" href="#streamassistantresponse" title="streamAssistantResponse · agent-loop">streamAssistantResponse</a>(context, config, signal, <span class="t-keyword">emit</span>, <span class="t-symbol">streamFn</span>)
+            <span class="t-symbol">newMessages</span>.<span class="t-symbol">add</span>(message)
+            <span class="t-keyword">if</span> message.<span class="t-symbol">stopReason</span> is <span class="t-literal">&quot;error&quot;</span> or <span class="t-literal">&quot;aborted&quot;</span>:
+                config.<span class="t-symbol">finishTurn</span>?(turn)                 <span class="t-comment">// its answer is ignored: we stop no matter what</span>
+                <span class="t-keyword">emit</span> <span class="t-symbol">turn_end</span>{message, <span class="t-symbol">toolResults</span>: []}
+                <span class="t-keyword">emit</span> <span class="t-symbol">agent_end</span>{<span class="t-symbol">newMessages</span>}
+                <span class="t-keyword">return</span>
+<details class="fold"><summary title="Show the 9 lines this name stands for">            <span class="t-symbol">toolResults</span>, <span class="t-symbol">hasMoreToolCalls</span> = <a class="t-symbol t-link t-inline" href="#runtoolbatch" title="Not in the code: a named part of runLoop">runToolBatch</a>(message)</summary><span class="fold-body" style="margin-left:12ch"><span class="fold-head"><a class="t-inline-head" href="#runtoolbatch">runToolBatch</a> <span>· not in the code, these 9 lines are part of runLoop</span></span><span class="fold-code"><span class="t-symbol">toolCalls</span> = the <span class="t-symbol">toolCall</span> blocks in message.<span class="t-symbol">content</span>
+<span class="t-keyword">if</span> <span class="t-symbol">toolCalls</span> is <span class="t-literal">empty</span>:
+    <span class="t-keyword t-return" title="Goes back to the call line above, not out of the whole function">return</span> [], <span class="t-literal">false</span>
+<span class="t-keyword">if</span> message.<span class="t-symbol">stopReason</span> is <span class="t-literal">&quot;length&quot;</span>:
+    batch = <a class="t-symbol t-link" href="#failtoolcallsfromtruncatedmessage" title="failToolCallsFromTruncatedMessage · agent-loop">failToolCallsFromTruncatedMessage</a>(<span class="t-symbol">toolCalls</span>, <span class="t-keyword">emit</span>)
+<span class="t-keyword">else</span>:
+    batch = <a class="t-symbol t-link" href="#executetoolcalls" title="executeToolCalls · agent-loop">executeToolCalls</a>(context, message, config, signal, <span class="t-keyword">emit</span>)
+add batch.<span class="t-symbol">messages</span> to context.<span class="t-symbol">messages</span> and <span class="t-symbol">newMessages</span>
+<span class="t-keyword t-return" title="Goes back to the call line above, not out of the whole function">return</span> batch.<span class="t-symbol">messages</span>, not batch.<span class="t-symbol">terminate</span></span><span class="fold-foot">end of runToolBatch · back to the call</span></span></details>            decision = config.<span class="t-symbol">finishTurn</span>?(turn with message and <span class="t-symbol">toolResults</span>)
+            <span class="t-keyword">emit</span> <span class="t-symbol">turn_end</span>{message, <span class="t-symbol">toolResults</span>}
+            <span class="t-keyword">if</span> decision is <span class="t-literal">&quot;end&quot;</span>:
+                <span class="t-keyword">emit</span> <span class="t-symbol">agent_end</span>{<span class="t-symbol">newMessages</span>}
+                <span class="t-keyword">return</span>
+            <span class="t-symbol">explicitContinuation</span> = decision is <span class="t-literal">&quot;continue&quot;</span>
+            pending = config.<span class="t-symbol">getSteeringMessages</span>?() or []
+            <span class="t-keyword">if</span> <span class="t-symbol">hasMoreToolCalls</span> or pending is not <span class="t-literal">empty</span>:
+                <span class="t-symbol">explicitContinuation</span> = <span class="t-literal">false</span>             <span class="t-comment">// we're going around anyway</span>
+        <span class="t-symbol">followUps</span> = config.<span class="t-symbol">getFollowUpMessages</span>?() or []
+        <span class="t-keyword">if</span> <span class="t-symbol">followUps</span> is not <span class="t-literal">empty</span>:
+            pending = <span class="t-symbol">followUps</span>
+            <span class="t-keyword">continue</span>
+        <span class="t-keyword">if</span> <span class="t-symbol">explicitContinuation</span>:
+            <span class="t-symbol">explicitContinuation</span> = <span class="t-literal">false</span>
+            <span class="t-keyword">continue</span>                                     <span class="t-comment">// one more request with what we have</span>
+        <span class="t-keyword">break</span>
+    <span class="t-keyword">emit</span> <span class="t-symbol">agent_end</span>{<span class="t-symbol">newMessages</span>}</code></pre><h3 id="applynextturnupdate"><a class="anchor" href="#applynextturnupdate" aria-hidden="true">#</a>applyNextTurnUpdate</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L163">runLoop</a> <span class="marker" title="Not a real function: a named part of the function above">inline</span></span></div><p>This runs at the start of every turn after the first. It&#39;s the host&#39;s chance to
+swap in a new conversation (say, after compacting old history), switch models,
+or add messages before the next request.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">applyNextTurnUpdate</span>()
+    update = config.<span class="t-symbol">prepareNextTurn</span>?(<span class="t-symbol">lastCompletedTurn</span>)
+    <span class="t-keyword">if</span> update:
+        context = update.<span class="t-symbol">context</span> or context
+        prepared = update.<span class="t-symbol">messages</span> or []
+        config.<span class="t-symbol">model</span> = update.<span class="t-symbol">model</span> or config.<span class="t-symbol">model</span>
+        config.<span class="t-symbol">reasoning</span> = update.<span class="t-symbol">thinkingLevel</span>, with <span class="t-literal">&quot;off&quot;</span> meaning none
+    <span class="t-keyword">if</span> pending is <span class="t-literal">empty</span>:
+        pending = config.<span class="t-symbol">getSteeringMessages</span>?() or []
+        <span class="t-why"><span class="t-why-lbl">// why:</span> preparing can be slow (compaction calls the model), so pick up anything typed meanwhile.</span>
+        <span class="t-why">//      Only poll if the earlier poll was empty, or &quot;one at a time&quot; mode would deliver two.</span>
+    <span class="t-keyword">emit</span> <span class="t-symbol">turn_start</span></code></pre><h3 id="runtoolbatch"><a class="anchor" href="#runtoolbatch" aria-hidden="true">#</a>runToolBatch</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L163">runLoop</a> <span class="marker" title="Not a real function: a named part of the function above">inline</span></span></div><p>Runs all the tool calls from one reply and adds their results to the
+conversation.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">runToolBatch</span>(message) -&gt; (<span class="t-type">ToolResultMessage</span>[], <span class="t-type">Bool</span>)
+    <span class="t-symbol">toolCalls</span> = the <span class="t-symbol">toolCall</span> blocks in message.<span class="t-symbol">content</span>
+    <span class="t-keyword">if</span> <span class="t-symbol">toolCalls</span> is <span class="t-literal">empty</span>:
+        <span class="t-keyword">return</span> [], <span class="t-literal">false</span>
+    <span class="t-keyword">if</span> message.<span class="t-symbol">stopReason</span> is <span class="t-literal">&quot;length&quot;</span>:
+        batch = <a class="t-symbol t-link" href="#failtoolcallsfromtruncatedmessage" title="failToolCallsFromTruncatedMessage · agent-loop">failToolCallsFromTruncatedMessage</a>(<span class="t-symbol">toolCalls</span>, <span class="t-keyword">emit</span>)
+    <span class="t-keyword">else</span>:
+        batch = <a class="t-symbol t-link" href="#executetoolcalls" title="executeToolCalls · agent-loop">executeToolCalls</a>(context, message, config, signal, <span class="t-keyword">emit</span>)
+    add batch.<span class="t-symbol">messages</span> to context.<span class="t-symbol">messages</span> and <span class="t-symbol">newMessages</span>
+    <span class="t-keyword">return</span> batch.<span class="t-symbol">messages</span>, not batch.<span class="t-symbol">terminate</span></code></pre><h3 id="declaretoolchanges"><a class="anchor" href="#declaretoolchanges" aria-hidden="true">#</a>declareToolChanges</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L333">declareToolChanges</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L368">withToolChanges</a></span></div><p>In Pi, the tool list isn&#39;t a separate request field. It lives in system messages
+inside the conversation. So before each request, the loop compares the tools it
+can actually run with the tools the conversation has announced, and writes down
+the difference as <code>toolsAdded</code> / <code>toolsRemoved</code> on a system message.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">declareToolChanges</span>(context, <span class="t-symbol">pendingMessages</span>) -&gt; <span class="t-type">AgentMessage</span>[]
+    <span class="t-symbol">pendingSystem</span> = the last system message in <span class="t-symbol">pendingMessages</span>, <span class="t-keyword">if</span> any
+    baseline = <span class="t-symbol">pendingMessages</span>, with <span class="t-symbol">pendingSystem</span>'s tool fields cleared
+    changes = <span class="t-module">transcript</span>.<span class="t-symbol">getToolStateChanges</span>(            <span class="t-comment">// transcript helpers live in pi-ai</span>
+        <span class="t-module">transcript</span>.<span class="t-symbol">getCurrentTools</span>(context.<span class="t-symbol">messages</span> + baseline),
+        context.<span class="t-symbol">tools</span> mapped with <span class="t-module">transcript</span>.<span class="t-symbol">toToolDeclaration</span>)
+    <span class="t-keyword">if</span> <span class="t-symbol">pendingSystem</span> exists:
+        <span class="t-keyword">if</span> there are no changes and <span class="t-symbol">pendingSystem</span> declares none:
+            <span class="t-keyword">return</span> <span class="t-symbol">pendingMessages</span>               <span class="t-comment">// leave the caller's message alone</span>
+        <span class="t-keyword">return</span> baseline with <span class="t-symbol">pendingSystem</span>'s tool fields set to changes
+        <span class="t-why"><span class="t-why-lbl">// why:</span> a pending system message's tool fields are only intent. Replace them with the</span>
+        <span class="t-why">//      real difference, so replaying the conversation gives exactly context.tools.</span>
+    <span class="t-keyword">if</span> there are no changes:
+        <span class="t-keyword">return</span> <span class="t-symbol">pendingMessages</span>
+    insert a <span class="t-keyword">new</span> system message {content: <span class="t-literal">&quot;&quot;</span>, <span class="t-symbol">toolsAdded</span>, <span class="t-symbol">toolsRemoved</span>}
+        before the first non-system pending message</code></pre><h3 id="streamassistantresponse"><a class="anchor" href="#streamassistantresponse" aria-hidden="true">#</a>streamAssistantResponse</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L381">streamAssistantResponse</a></span></div><p>Calls the model and turns its stream into agent events. This is the one place
+where agent messages become plain LLM messages.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">streamAssistantResponse</span>(context, config, signal, <span class="t-keyword">emit</span>, <span class="t-symbol">streamFn</span>) -&gt; <span class="t-type">AssistantMessage</span>
+    messages = config.<span class="t-symbol">transformContext</span>?(context.<span class="t-symbol">messages</span>, signal) or context.<span class="t-symbol">messages</span>
+    <span class="t-symbol">llmContext</span> = <span class="t-module">transcript</span>.<span class="t-symbol">normalizeContext</span>({ messages: config.<span class="t-symbol">convertToLlm</span>(messages) })
+    <span class="t-symbol">apiKey</span> = config.<span class="t-symbol">getApiKey</span>?(config.<span class="t-symbol">model</span>.<span class="t-symbol">provider</span>) or config.<span class="t-symbol">apiKey</span>
+        <span class="t-why"><span class="t-why-lbl">// why:</span> OAuth tokens can expire during a long run, so ask again before every request</span>
+    response = <span class="t-symbol">streamFn</span>(config.<span class="t-symbol">model</span>, <span class="t-symbol">llmContext</span>, config + {<span class="t-symbol">apiKey</span>, signal})
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> event in response:
+        <span class="t-keyword">match</span> event.<span class="t-symbol">type</span>:
+            <span class="t-literal">&quot;start&quot;</span>:
+                push event.<span class="t-symbol">partial</span> onto context.<span class="t-symbol">messages</span>
+                <span class="t-keyword">emit</span> <span class="t-symbol">message_start</span>{partial}
+            <span class="t-symbol">text_</span>*, <span class="t-symbol">thinking_</span>*, <span class="t-symbol">toolcall_</span>*:
+                replace the last message with event.<span class="t-symbol">partial</span>
+                <span class="t-keyword">emit</span> <span class="t-symbol">message_update</span>{partial, event}
+            <span class="t-literal">&quot;done&quot;</span>, <span class="t-literal">&quot;error&quot;</span>:
+                final = response.<span class="t-symbol">result</span>(), tagged with the thinking level we asked <span class="t-keyword">for</span>
+                put final in place of the partial (or add it, with <span class="t-symbol">message_start</span>, <span class="t-keyword">if</span> no <span class="t-literal">&quot;start&quot;</span> came)
+                <span class="t-keyword">emit</span> <span class="t-symbol">message_end</span>{final}
+                <span class="t-keyword">return</span> final
+    <span class="t-comment">// if the stream just ends: finish up the same way</span></code></pre><h3 id="failtoolcallsfromtruncatedmessage"><a class="anchor" href="#failtoolcallsfromtruncatedmessage" aria-hidden="true">#</a>failToolCallsFromTruncatedMessage</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L478">failToolCallsFromTruncatedMessage</a></span></div><p>Used when the model ran out of output tokens in the middle of its reply. Its
+tool call arguments were rebuilt from cut-off JSON, so they might look fine but
+be missing something. Pi doesn&#39;t take the chance. It runs none of them and tells
+the model why.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">failToolCallsFromTruncatedMessage</span>(<span class="t-symbol">toolCalls</span>, <span class="t-keyword">emit</span>) -&gt; <span class="t-type">ExecutedToolCallBatch</span>
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> <span class="t-symbol">toolCall</span> in <span class="t-symbol">toolCalls</span>:
+        <span class="t-keyword">emit</span> <span class="t-symbol">tool_execution_start</span>
+        result = error <span class="t-literal">&quot;Tool call &quot;</span>&lt;name&gt;&quot; was not executed: the response hit the
+                 output token limit, so its arguments may be truncated. Re-issue ...&quot;
+        <span class="t-keyword">emit</span> <span class="t-symbol">tool_execution_end</span>{<span class="t-symbol">isError</span>: <span class="t-literal">true</span>}
+        <span class="t-keyword">emit</span> <span class="t-symbol">message_start</span> / <span class="t-symbol">message_end</span> <span class="t-keyword">for</span> the tool result
+    <span class="t-keyword">return</span> { messages, terminate: <span class="t-literal">false</span> }        <span class="t-comment">// the model gets another turn to try again</span></code></pre><h3 id="executetoolcalls"><a class="anchor" href="#executetoolcalls" aria-hidden="true">#</a>executeToolCalls</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L508">executeToolCalls</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L530">executeToolCallsSequential</a></span></div><p>Decides between running tools one at a time or all at once. In sequential mode,
+each call finishes completely before the next one starts.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">executeToolCalls</span>(context, <span class="t-symbol">assistantMessage</span>, config, signal, <span class="t-keyword">emit</span>) -&gt; <span class="t-type">ExecutedToolCallBatch</span>
+    <span class="t-keyword">if</span> config.<span class="t-symbol">toolExecution</span> is <span class="t-literal">&quot;sequential&quot;</span> or any called tool has <span class="t-symbol">executionMode</span> <span class="t-literal">&quot;sequential&quot;</span>:
+        <span class="t-keyword">return</span> <span class="t-symbol">executeToolCallsSequential</span>(...)
+    <span class="t-keyword">return</span> <a class="t-symbol t-link" href="#executetoolcallsparallel" title="executeToolCallsParallel · agent-loop">executeToolCallsParallel</a>(...)
+
+<span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">executeToolCallsSequential</span>(...)
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> <span class="t-symbol">toolCall</span>:
+        <span class="t-keyword">emit</span> <span class="t-symbol">tool_execution_start</span>
+        prep = <a class="t-symbol t-link" href="#preparetoolcall" title="prepareToolCall · agent-loop">prepareToolCall</a>(context, <span class="t-symbol">assistantMessage</span>, <span class="t-symbol">toolCall</span>, config, signal)
+        <span class="t-keyword">if</span> prep is immediate:
+            finalized = prep.<span class="t-symbol">result</span>
+        <span class="t-keyword">else</span>:
+            executed = <a class="t-symbol t-link" href="#executepreparedtoolcall" title="executePreparedToolCall · agent-loop">executePreparedToolCall</a>(prep, signal, <span class="t-symbol">onUpdate</span> = <span class="t-keyword">emit</span> <span class="t-symbol">tool_execution_update</span>)
+            finalized = <a class="t-symbol t-link" href="#finalizeexecutedtoolcall" title="finalizeExecutedToolCall · agent-loop">finalizeExecutedToolCall</a>(context, <span class="t-symbol">assistantMessage</span>, prep, executed, config, signal)
+        <span class="t-keyword">emit</span> <span class="t-symbol">tool_execution_end</span>
+        <span class="t-keyword">emit</span> <span class="t-symbol">message_start</span> / <span class="t-symbol">message_end</span> <span class="t-keyword">for</span> the tool result
+        <span class="t-keyword">if</span> the run was aborted: <span class="t-keyword">break</span>
+    <span class="t-keyword">return</span> { messages, terminate: <span class="t-symbol">shouldTerminateToolBatch</span>(finalized) }</code></pre><h3 id="executetoolcallsparallel"><a class="anchor" href="#executetoolcallsparallel" aria-hidden="true">#</a>executeToolCallsParallel</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L586">executeToolCallsParallel</a></span></div><p>The default. Every call is checked first, one by one and in order (so
+<code>beforeToolCall</code> sees them in the order the model asked). Then the allowed ones
+run at the same time.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">executeToolCallsParallel</span>(context, <span class="t-symbol">assistantMessage</span>, <span class="t-symbol">toolCalls</span>, config, signal, <span class="t-keyword">emit</span>)
+    entries = []
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> <span class="t-symbol">toolCall</span> in <span class="t-symbol">toolCalls</span>:
+        <span class="t-keyword">emit</span> <span class="t-symbol">tool_execution_start</span>
+        prep = <a class="t-symbol t-link" href="#preparetoolcall" title="prepareToolCall · agent-loop">prepareToolCall</a>(context, <span class="t-symbol">assistantMessage</span>, <span class="t-symbol">toolCall</span>, config, signal)
+        <span class="t-keyword">if</span> prep is immediate:
+            <span class="t-keyword">emit</span> <span class="t-symbol">tool_execution_end</span>
+            entries.<span class="t-symbol">add</span>(prep.<span class="t-symbol">result</span>)
+        <span class="t-keyword">else</span>:
+            entries.<span class="t-symbol">add</span>(run later:
+                <span class="t-keyword">if</span> aborted: result = error <span class="t-literal">&quot;Operation aborted&quot;</span>
+                <span class="t-keyword">else</span>: execute, then <span class="t-symbol">finalizeExecutedToolCall</span>
+                <span class="t-keyword">emit</span> <span class="t-symbol">tool_execution_end</span>)          <span class="t-comment">// in the order the tools finish</span>
+        <span class="t-keyword">if</span> the run was aborted: <span class="t-keyword">break</span>
+    outcomes = run all the <span class="t-literal">&quot;later&quot;</span> entries at once, keeping the original order
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> outcome in outcomes:
+        <span class="t-keyword">emit</span> <span class="t-symbol">message_start</span> / <span class="t-symbol">message_end</span> <span class="t-keyword">for</span> its tool result   <span class="t-comment">// in the order the model asked</span>
+    <span class="t-keyword">return</span> { messages, terminate: <span class="t-symbol">shouldTerminateToolBatch</span>(outcomes) }</code></pre><h3 id="preparetoolcall"><a class="anchor" href="#preparetoolcall" aria-hidden="true">#</a>prepareToolCall</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L708">prepareToolCall</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L694">prepareToolCallArguments</a></span></div><p>Finds the tool, checks the arguments, and asks <code>beforeToolCall</code> whether the call
+is allowed. If anything goes wrong, you get an error result back, never an
+exception.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">prepareToolCall</span>(context, <span class="t-symbol">assistantMessage</span>, <span class="t-symbol">toolCall</span>, hooks, signal, tools = context.<span class="t-symbol">tools</span>)
+        -&gt; <span class="t-type">PreparedToolCall</span> | <span class="t-type">ImmediateToolCallOutcome</span>
+    tool = tools.<span class="t-symbol">find</span>(name == <span class="t-symbol">toolCall</span>.<span class="t-symbol">name</span>)
+    <span class="t-keyword">if</span> no tool:
+        <span class="t-keyword">return</span> immediate error <span class="t-literal">&quot;Tool &lt;name&gt; not found&quot;</span>
+    <span class="t-keyword">try</span>:
+        call = <span class="t-symbol">toolCall</span> with arguments = tool.<span class="t-symbol">prepareArguments</span>?(arguments)
+        args = <span class="t-symbol">validateToolArguments</span>(tool, call)          <span class="t-comment">// pi-ai: JSON schema check</span>
+        before = hooks.<span class="t-symbol">beforeToolCall</span>?({<span class="t-symbol">assistantMessage</span>, <span class="t-symbol">toolCall</span>, args, context}, signal)
+        <span class="t-keyword">if</span> aborted:
+            <span class="t-keyword">return</span> immediate error <span class="t-literal">&quot;Operation aborted&quot;</span>
+        <span class="t-keyword">if</span> before.<span class="t-symbol">block</span>:
+            <span class="t-keyword">return</span> immediate error (before.<span class="t-symbol">reason</span> or <span class="t-literal">&quot;Tool execution was blocked&quot;</span>),
+                   with terminate = before.<span class="t-symbol">terminate</span>
+        <span class="t-keyword">return</span> prepared { <span class="t-symbol">toolCall</span>, tool, args }
+    <span class="t-keyword">catch</span> e:
+        <span class="t-keyword">return</span> immediate error e.<span class="t-symbol">message</span></code></pre><h3 id="executepreparedtoolcall"><a class="anchor" href="#executepreparedtoolcall" aria-hidden="true">#</a>executePreparedToolCall</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L821">executePreparedToolCall</a></span></div><p>Runs the tool and times it. Progress updates are passed on only while the tool
+is still running.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">executePreparedToolCall</span>(prepared, signal, <span class="t-symbol">onUpdate</span>) -&gt; <span class="t-type">ExecutedToolCallOutcome</span>
+    start a timer
+    <span class="t-keyword">try</span>:
+        result = prepared.<span class="t-symbol">tool</span>.<span class="t-symbol">execute</span>(id, args, signal, <span class="t-symbol">onUpdate</span> <span class="t-keyword">while</span> still running)
+        stop taking updates, wait <span class="t-keyword">for</span> the ones already sent
+        <span class="t-keyword">return</span> { result, <span class="t-symbol">isError</span>: result.<span class="t-symbol">isError</span> == <span class="t-literal">true</span>, <span class="t-symbol">durationMs</span> }
+    <span class="t-keyword">catch</span> e:
+        stop taking updates, wait <span class="t-keyword">for</span> the ones already sent
+        <span class="t-keyword">return</span> { error result e.<span class="t-symbol">message</span>, <span class="t-symbol">isError</span>: <span class="t-literal">true</span>, <span class="t-symbol">durationMs</span> }</code></pre><h3 id="finalizeexecutedtoolcall"><a class="anchor" href="#finalizeexecutedtoolcall" aria-hidden="true">#</a>finalizeExecutedToolCall</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L859">finalizeExecutedToolCall</a></span></div><p>Gives <code>afterToolCall</code> a chance to rewrite the result. Any field it returns
+replaces the old one completely; there&#39;s no deep merge.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">finalizeExecutedToolCall</span>(context, <span class="t-symbol">assistantMessage</span>, prepared, executed, hooks, signal)
+    result, <span class="t-symbol">isError</span> = executed.<span class="t-symbol">result</span>, executed.<span class="t-symbol">isError</span>
+    <span class="t-keyword">try</span>:
+        after = hooks.<span class="t-symbol">afterToolCall</span>?({<span class="t-symbol">assistantMessage</span>, <span class="t-symbol">toolCall</span>, args, result, <span class="t-symbol">isError</span>, context}, signal)
+        <span class="t-keyword">if</span> after:
+            result.<span class="t-symbol">content</span>, details, usage, terminate = after's value or the old one
+            <span class="t-keyword">if</span> after.<span class="t-symbol">structuredContent</span> is set: use it
+            <span class="t-keyword">else</span> <span class="t-keyword">if</span> after.<span class="t-symbol">content</span> is set: drop <span class="t-symbol">structuredContent</span>   <span class="t-why"><span class="t-why-lbl">// why:</span> it may not match the new content</span>
+            <span class="t-symbol">isError</span> = after.<span class="t-symbol">isError</span> or <span class="t-symbol">isError</span>
+    <span class="t-keyword">catch</span> e:
+        result, <span class="t-symbol">isError</span> = error result e.<span class="t-symbol">message</span>, <span class="t-literal">true</span>
+    <span class="t-keyword">return</span> { <span class="t-symbol">toolCall</span>, result, <span class="t-symbol">isError</span>, <span class="t-symbol">durationMs</span>: executed.<span class="t-symbol">durationMs</span> }</code></pre><h3 id="runtoolcall"><a class="anchor" href="#runtoolcall" aria-hidden="true">#</a>runToolCall</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts" title="packages/agent/src/agent-loop.ts">agent-loop.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent-loop.ts#L811">runToolCall</a></span></div><p>Runs a single tool call through the same steps as a call from the model, but
+without events or new messages. It&#39;s for tools that call other tools, so things
+like permission checks in <code>beforeToolCall</code> still apply to them.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">runToolCall</span>(<span class="t-symbol">toolCall</span>, options) -&gt; <span class="t-type">AgentToolCallOutcome</span>
+    prep = <a class="t-symbol t-link" href="#preparetoolcall" title="prepareToolCall · agent-loop">prepareToolCall</a>(options.<span class="t-symbol">context</span>, options.<span class="t-symbol">assistantMessage</span>, <span class="t-symbol">toolCall</span>, options, signal, options.<span class="t-symbol">tools</span>)
+    <span class="t-keyword">if</span> prep is immediate:
+        <span class="t-keyword">return</span> { <span class="t-symbol">toolCall</span>, prep.<span class="t-symbol">result</span>, prep.<span class="t-symbol">isError</span> }
+    executed = <a class="t-symbol t-link" href="#executepreparedtoolcall" title="executePreparedToolCall · agent-loop">executePreparedToolCall</a>(prep, signal, options.<span class="t-symbol">onUpdate</span> or nothing)
+    <span class="t-keyword">return</span> <a class="t-symbol t-link" href="#finalizeexecutedtoolcall" title="finalizeExecutedToolCall · agent-loop">finalizeExecutedToolCall</a>(..., prep, executed, options, signal)</code></pre><h2 id="rules"><a class="anchor" href="#rules" aria-hidden="true">#</a>Rules</h2>
+<p>These are promises the loop keeps every time, whichever path a run takes. If
+the code ever stopped doing one of these, that would be a bug. <code>MUST</code> means
+always, <code>MUST NOT</code> means never, and <code>SHOULD</code> means &quot;normally, unless there&#39;s a
+good reason&quot;.</p>
+<pre class="pc"><code><span class="t-rule-must">MUST</span>     <span class="t-keyword">emit</span> <span class="t-symbol">agent_end</span> as the very last event of every run
+<span class="t-rule-must">MUST</span>     stop the run, without checking the queues, when a reply ends with <span class="t-literal">&quot;error&quot;</span> or <span class="t-literal">&quot;aborted&quot;</span>
+<span class="t-rule-must">MUST NOT</span> run any tool call from a reply that stopped at the output token limit (<span class="t-literal">&quot;length&quot;</span>)
+         <span class="t-why"><span class="t-why-lbl">// why:</span> its arguments were rebuilt from cut-off JSON and may be incomplete</span>
+<span class="t-rule-must">MUST</span>     run <span class="t-symbol">beforeToolCall</span> <span class="t-keyword">for</span> every call in the order the model asked, even in parallel mode
+<span class="t-rule-must">MUST</span>     add tool results to the conversation in the order the model asked, even <span class="t-keyword">if</span> tools finish out of order
+<span class="t-rule-must">MUST</span>     <span class="t-keyword">emit</span> <span class="t-symbol">tool_execution_end</span> in the order tools finish, in parallel mode
+<span class="t-rule-must">MUST</span>     run the whole batch one by one <span class="t-keyword">if</span> any called tool asks <span class="t-keyword">for</span> sequential execution
+<span class="t-rule-must">MUST</span>     stop after a batch only when every result in it asks to stop (terminate = <span class="t-literal">true</span>)
+<span class="t-rule-must">MUST</span>     add messages the user typed mid-run only after all tool calls of the current turn have finished
+<span class="t-rule-must">MUST</span>     check follow-up messages only when there are no tool calls and no steering messages left
+<span class="t-rule-must">MUST</span>     turn every tool failure (unknown tool, bad arguments, blocked, thrown, failing hook) into an error result
+<span class="t-rule-must">MUST NOT</span> let a tool error escape from the <span class="t-keyword">loop</span>
+<span class="t-rule-must">MUST</span>     ignore progress updates a tool sends after it has finished
+<span class="t-rule-must">MUST</span>     ask <span class="t-symbol">getApiKey</span> <span class="t-keyword">for</span> a key before every request          <span class="t-why"><span class="t-why-lbl">// why:</span> short-lived OAuth tokens</span>
+<span class="t-rule-must">MUST</span>     convert agent messages to <span class="t-symbol">LLM</span> messages only inside <span class="t-symbol">streamAssistantResponse</span>
+<span class="t-rule-should">SHOULD</span>   make at most one extra request when <span class="t-symbol">finishTurn</span> asks to <span class="t-literal">&quot;continue&quot;</span>
+<span class="t-rule-must">MUST NOT</span> <span class="t-keyword">continue</span> from a conversation whose last message is from the assistant</code></pre><h2 id="examples"><a class="anchor" href="#examples" aria-hidden="true">#</a>Examples</h2>
+<p>Each case below comes from a real test in Pi&#39;s test suite (the link above it
+goes straight to the test). Read them as small stories: the setup, what
+happens, and what you can check afterwards.</p>
+<div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent-loop.test.ts#L456" title="packages/agent/test/agent-loop.test.ts">agent-loop.test.ts <span class="src-sep">›</span> “should not execute tool calls from a length-truncated assistant message”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a tool <span class="t-literal">&quot;echo&quot;</span>
+  <span class="t-example">AND</span> the model's first reply calls echo{value: <span class="t-literal">&quot;hel&quot;</span>} and stops with <span class="t-literal">&quot;length&quot;</span>
+<span class="t-example">WHEN</span>  the <span class="t-keyword">loop</span> runs
+<span class="t-example">THEN</span>  echo never runs
+  <span class="t-example">AND</span> <span class="t-symbol">tool_execution_end</span> has <span class="t-symbol">isError</span> = <span class="t-literal">true</span> and text containing <span class="t-literal">&quot;output token limit&quot;</span>
+  <span class="t-example">AND</span> the model is called a second time, so it can <span class="t-keyword">try</span> again</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent-loop.test.ts#L668" title="packages/agent/test/agent-loop.test.ts">agent-loop.test.ts <span class="src-sep">›</span> “should emit tool_execution_end in completion order but persist tool results in source order”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> parallel tool execution
+  <span class="t-example">AND</span> one reply calls <span class="t-symbol">echo</span>(<span class="t-literal">&quot;first&quot;</span>) as tool-<span class="t-literal">1</span> and <span class="t-symbol">echo</span>(<span class="t-literal">&quot;second&quot;</span>) as tool-<span class="t-literal">2</span>
+  <span class="t-example">AND</span> <span class="t-literal">&quot;first&quot;</span> takes 20ms longer to finish
+<span class="t-example">WHEN</span>  the <span class="t-keyword">loop</span> runs
+<span class="t-example">THEN</span>  <span class="t-symbol">tool_execution_end</span> arrives <span class="t-keyword">for</span> tool-<span class="t-literal">2</span>, then tool-<span class="t-literal">1</span>
+  <span class="t-example">AND</span> the tool results are saved as tool-<span class="t-literal">1</span>, then tool-<span class="t-literal">2</span>
+  <span class="t-example">AND</span> <span class="t-symbol">turn_end</span> lists tool-<span class="t-literal">1</span>, then tool-<span class="t-literal">2</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent-loop.test.ts#L762" title="packages/agent/test/agent-loop.test.ts">agent-loop.test.ts <span class="src-sep">›</span> “should inject queued messages after all tool calls complete”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> sequential tool execution and a reply with two echo calls
+  <span class="t-example">AND</span> the user types <span class="t-literal">&quot;interrupt&quot;</span> <span class="t-keyword">while</span> the first tool is running
+<span class="t-example">WHEN</span>  the <span class="t-keyword">loop</span> runs
+<span class="t-example">THEN</span>  both tools run before <span class="t-literal">&quot;interrupt&quot;</span> is added to the conversation
+  <span class="t-example">AND</span> <span class="t-literal">&quot;interrupt&quot;</span> is part of the second request to the model</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent-loop.test.ts#L1841" title="packages/agent/test/agent-loop.test.ts">agent-loop.test.ts <span class="src-sep">›</span> “should continue after a mixed batch with one terminating blocked call”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> <span class="t-symbol">beforeToolCall</span> blocks <span class="t-symbol">echo</span>(<span class="t-literal">&quot;first&quot;</span>) and asks to stop (terminate = <span class="t-literal">true</span>)
+  <span class="t-example">AND</span> one reply calls <span class="t-symbol">echo</span>(<span class="t-literal">&quot;first&quot;</span>) and <span class="t-symbol">echo</span>(<span class="t-literal">&quot;second&quot;</span>)
+<span class="t-example">WHEN</span>  the <span class="t-keyword">loop</span> runs
+<span class="t-example">THEN</span>  only <span class="t-literal">&quot;second&quot;</span> runs
+  <span class="t-example">AND</span> the model is called twice, because not every result asked to stop</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent-loop.test.ts#L1273" title="packages/agent/test/agent-loop.test.ts">agent-loop.test.ts <span class="src-sep">›</span> “makes exactly one context-only request when no natural request satisfies continuation”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> no tools, and <span class="t-symbol">finishTurn</span> says <span class="t-literal">&quot;continue&quot;</span> the first time only
+<span class="t-example">WHEN</span>  the <span class="t-keyword">loop</span> runs with one user prompt
+<span class="t-example">THEN</span>  the model is called <span class="t-literal">2</span> times and <span class="t-symbol">finishTurn</span> is called <span class="t-literal">2</span> times</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent-loop.test.ts#L2013" title="packages/agent/test/agent-loop.test.ts">agent-loop.test.ts <span class="src-sep">›</span> “should throw when context has no messages”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> an <span class="t-literal">empty</span> conversation
+<span class="t-example">WHEN</span>  <span class="t-symbol">agentLoopContinue</span> is called
+<span class="t-example">THEN</span>  it throws <span class="t-literal">&quot;Cannot continue: no messages in context&quot;</span></code></pre><h2 id="notes"><a class="anchor" href="#notes" aria-hidden="true">#</a>Notes</h2>
+<p>The loop never puts the system prompt or the tool list in separate request
+fields. Both live in system messages inside the conversation, and
+<a class="code-link" href="#declaretoolchanges"><code>declareToolChanges</code></a> keeps them in step with the tools the loop can actually
+run. The upside is that a saved conversation can be replayed on its own, with no
+outside state.</p>
+<p>There&#39;s also <code>streamProxy</code> in <code>proxy.ts</code>, a <a class="code-link" href="#def-StreamFn"><code>StreamFn</code></a> for apps that send model
+calls through their own server. The server leaves out the partial message on
+every event to save bandwidth, and <code>streamProxy</code> rebuilds it on the client.</p>
+<h2 id="source-map"><a class="anchor" href="#source-map" aria-hidden="true">#</a>Source map</h2>
+<p>Where each block above lives in the real code, and what I left out.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Pseudocode</th>
+<th>Real code</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a class="code-link" href="#runagentloop"><code>runAgentLoop</code></a></td>
+<td><a class="code-link" href="#runagentloop"><code>runAgentLoop</code></a>, <a class="code-link" href="#runagentloop"><code>agentLoop</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#runagentloopcontinue"><code>runAgentLoopContinue</code></a></td>
+<td><a class="code-link" href="#runagentloopcontinue"><code>runAgentLoopContinue</code></a>, <a class="code-link" href="#runagentloopcontinue"><code>agentLoopContinue</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#runloop"><code>runLoop</code></a></td>
+<td><a class="code-link" href="#runloop"><code>runLoop</code></a></td>
+<td>split</td>
+</tr>
+<tr>
+<td><a class="code-link t-inline" href="#applynextturnupdate" title="Not in the code: a named part of runLoop"><code>applyNextTurnUpdate</code></a></td>
+<td>top of the inner loop in <a class="code-link" href="#runloop"><code>runLoop</code></a></td>
+<td>inline</td>
+</tr>
+<tr>
+<td><a class="code-link t-inline" href="#runtoolbatch" title="Not in the code: a named part of runLoop"><code>runToolBatch</code></a></td>
+<td>tool-call part of <a class="code-link" href="#runloop"><code>runLoop</code></a></td>
+<td>inline</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#declaretoolchanges"><code>declareToolChanges</code></a></td>
+<td><a class="code-link" href="#declaretoolchanges"><code>declareToolChanges</code></a>, <a class="code-link" href="#declaretoolchanges"><code>withToolChanges</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#streamassistantresponse"><code>streamAssistantResponse</code></a></td>
+<td><a class="code-link" href="#streamassistantresponse"><code>streamAssistantResponse</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#failtoolcallsfromtruncatedmessage"><code>failToolCallsFromTruncatedMessage</code></a></td>
+<td><a class="code-link" href="#failtoolcallsfromtruncatedmessage"><code>failToolCallsFromTruncatedMessage</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#executetoolcalls"><code>executeToolCalls</code></a></td>
+<td><a class="code-link" href="#executetoolcalls"><code>executeToolCalls</code></a>, <a class="code-link" href="#executetoolcalls"><code>executeToolCallsSequential</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#executetoolcallsparallel"><code>executeToolCallsParallel</code></a></td>
+<td><a class="code-link" href="#executetoolcallsparallel"><code>executeToolCallsParallel</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#preparetoolcall"><code>prepareToolCall</code></a></td>
+<td><a class="code-link" href="#preparetoolcall"><code>prepareToolCall</code></a>, <a class="code-link" href="#preparetoolcall"><code>prepareToolCallArguments</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#executepreparedtoolcall"><code>executePreparedToolCall</code></a>, <a class="code-link" href="#finalizeexecutedtoolcall"><code>finalizeExecutedToolCall</code></a>, <a class="code-link" href="#runtoolcall"><code>runToolCall</code></a></td>
+<td>same names</td>
+<td>same</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>createAgentStream</code>, <code>createErrorToolResult</code>, <code>createToolResultMessage</code>, <code>emitToolExecutionEnd</code>, <code>emitToolResultMessage</code>, <code>emitToolExecutionUpdate</code>, <code>shouldTerminateToolBatch</code></td>
+<td>omitted: small event and result builders</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>streamProxy</code> and its helpers in <code>proxy.ts</code></td>
+<td>omitted: optional proxy transport, see Notes</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>setDefaultStreamFn</code>, <code>getDefaultStreamFn</code></td>
+<td>omitted: one global fallback for <code>streamFn</code></td>
+</tr>
+</tbody></table>
+</div>
+</main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(function () {
+  try {
+    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    window.mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "strict" });
+  } catch (e) {}
+  var rail = document.querySelector(".rail-inner");
+  if (rail && window.matchMedia("(max-width: 900px)").matches) rail.open = false;
+  document.querySelectorAll(".fold-tools button").forEach(function (b) {
+    var pre = b.parentElement.nextElementSibling;
+    b.addEventListener("click", function () {
+      var open = b.dataset.fold === "open";
+      pre.querySelectorAll("details.fold").forEach(function (d) { d.open = open; });
+      b.dataset.fold = open ? "close" : "open";
+      b.textContent = open ? "close all ▾" : "open all ▸";
+    });
+  });
+})();
+</script>
+</body>
+</html>
