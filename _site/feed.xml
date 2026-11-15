@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-11-06T22:54:54-08:00</updated>
+  <updated>2026-11-12T16:28:19-08:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,32 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>Inside Pi: Context Compaction</title>
+    <link href="http://localhost:4000/posts/inside-pi-context-compaction/" rel="alternate" type="text/html" title="Inside Pi: Context Compaction" />
+    <published>2026-11-07T10:00:00-08:00</published>
+  
+    <updated>2026-11-07T10:00:00-08:00</updated>
+  
+    <id>http://localhost:4000/posts/inside-pi-context-compaction/</id>
+    <content type="text/html" src="http://localhost:4000/posts/inside-pi-context-compaction/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="AI" />
+    
+    <category term="Agents" />
+    
+  
+
+  <summary>A coding agent reads a lot. Every file it opens and every command it runs ends up in the conversation, and the conversation goes to the model on every request. Sooner or later it no longer fits in the model’s context window.  This is the second post in my series about how the Pi coding agent works inside. The first post covered the agent loop. This one covers what Pi does when the context gets ...</summary>
+
+  </entry>
 
   
   <entry>
@@ -119,30 +145,6 @@
   
 
   <summary>Temporal is a durable execution framework. It recently added a developer-preview integration for LangChain Deep Agents — the package is temporalio.contrib.deepagents, and it still carries an “experimental, may change” warning. The idea is simple: take an existing Deep Agents program and make it durable — crash-safe, retryable, resumable — by adding one plugin. No changes to the agent code itsel...</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>千层饼与芝麻酱花卷</title>
-    <link href="http://localhost:4000/posts/scallion-pancake-vs-sesame-bun/" rel="alternate" type="text/html" title="千层饼与芝麻酱花卷" />
-    <published>2026-09-20T00:00:00-07:00</published>
-  
-    <updated>2026-09-20T00:00:00-07:00</updated>
-  
-    <id>http://localhost:4000/posts/scallion-pancake-vs-sesame-bun/</id>
-    <content type="text/html" src="http://localhost:4000/posts/scallion-pancake-vs-sesame-bun/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="Thoughts" />
-    
-  
-
-  <summary>左：千层饼；右：芝麻酱花卷。  我有一个 Vibe Coding 布道师朋友，他见我就问：”古法编程的屎山也多了去了，你怎么专挑 vibe coding 黑？”  我：不一样。古法编程的屎山像千层饼，一层一层堆上去的，有地质结构的层次特征。配上 git log，你还能考古，层与层之间的逻辑是找得到的。Vibe coding 的屎山像芝麻酱花卷，你 coding 一次，新屎老屎就从头到尾揉一遍，最后拧成一团。千层饼你能一层一层揭开，花卷……你连从哪儿下口都不知道。  他想了想：那我让 AI 重构一下不就行了？  我：……那是再抹一层芝麻酱，再揉一遍。</summary>
 
   </entry>
 

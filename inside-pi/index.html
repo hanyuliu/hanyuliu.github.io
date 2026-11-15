@@ -15,7 +15,7 @@
 <details class="rail-inner" open>
 <summary><a class="brand" href="index.html">Inside Pi</a>
 <span class="snapshot"><a href="https://github.com/earendil-works/pi/tree/195120a9156b79b0fab67d3a458b5315bed7a33f" target="_blank" rel="noopener">pi @ <code>195120a91</code></a></span></summary>
-<nav><ul class="nav-list"><li><a href="index.html" aria-current="page">Overview</a><ul class="toc"><li class="toc-2"><a href="#modules">Modules</a></li><li class="toc-2"><a href="#code-map">Code map</a></li><li class="toc-2"><a href="#how-the-modules-connect">How the modules connect</a></li><li class="toc-2"><a href="#key-flows">Key flows</a></li><li class="toc-2"><a href="#glossary">Glossary</a></li><li class="toc-2"><a href="#reading-order">Reading order</a></li></ul></li></ul><p class="nav-group">agent</p><ul class="nav-list"><li><a href="agent/agent-loop.html">agent-loop</a></li></ul></nav>
+<nav><ul class="nav-list"><li><a href="index.html" aria-current="page">Overview</a><ul class="toc"><li class="toc-2"><a href="#modules">Modules</a></li><li class="toc-2"><a href="#code-map">Code map</a></li><li class="toc-2"><a href="#how-the-modules-connect">How the modules connect</a></li><li class="toc-2"><a href="#key-flows">Key flows</a></li><li class="toc-2"><a href="#glossary">Glossary</a></li><li class="toc-2"><a href="#reading-order">Reading order</a></li></ul></li></ul><p class="nav-group">agent</p><ul class="nav-list"><li><a href="agent/agent-loop.html">agent-loop</a></li></ul><p class="nav-group">coding-agent</p><ul class="nav-list"><li><a href="coding-agent/compaction.html">compaction</a></li></ul></nav>
 <div class="legend" aria-label="Color legend">
 <p class="nav-group">reading the code</p>
 <ul>
@@ -36,8 +36,11 @@
 <p>Reference pages for the &quot;Inside Pi&quot; blog series. Each module page explains one part of the Pi coding agent in pseudocode, and links every function back to the real code.</p>
 </blockquote>
 <dl class="meta"><dt>repo</dt><dd><a href="https://github.com/earendil-works/pi">github.com/earendil-works/pi</a></dd><dt>commit</dt><dd><a href="https://github.com/earendil-works/pi/tree/195120a9156b79b0fab67d3a458b5315bed7a33f"><code>195120a91</code></a></dd></dl><p>The blog posts tell the story. These pages are the details behind them, for
-when you want to read or change the code. Start with the post
-<a href="/posts/inside-pi-the-agent-loop/">Inside Pi: The Agent Loop</a>.</p>
+when you want to read or change the code. The posts so far:</p>
+<ol>
+<li><a href="/posts/inside-pi-the-agent-loop/">Inside Pi: The Agent Loop</a></li>
+<li><a href="/posts/inside-pi-context-compaction/">Inside Pi: Context Compaction</a></li>
+</ol>
 <h2 id="modules"><a class="anchor" href="#modules" aria-hidden="true">#</a>Modules</h2>
 <div class="table-wrap"><table>
 <thead>
@@ -53,8 +56,13 @@ when you want to read or change the code. Start with the post
 <td><a href="agent/agent-loop.html">agent-loop</a></td>
 </tr>
 <tr>
+<td>compaction</td>
+<td>Replace old messages with a model-written summary when the context gets too big; also summarize a branch you leave</td>
+<td><a href="coding-agent/compaction.html">compaction</a></td>
+</tr>
+<tr>
 <td>Everything else</td>
-<td>The Agent wrapper, tools, sessions, compaction, providers, the terminal UI</td>
+<td>The Agent wrapper, tools, sessions, providers, the terminal UI</td>
 <td>coming with later posts</td>
 </tr>
 </tbody></table>
@@ -65,18 +73,32 @@ when you want to read or change the code. Start with the post
     src/types.ts              tools, hooks, and events                    <span class="t-comment">→</span> <a class="t-ref" href="agent/agent-loop.html">agent/agent-loop.md</a>
     src/agent.ts              a stateful wrapper around the loop: next time
   ai/                       pi-ai: talks to ~40 LLM providers: next time
-  coding-agent/             the `pi` command, built on top of the loop: next time
+  coding-agent/             the `pi` command, built on top of the loop
+    src/core/agent-session.ts   drives the loop; decides when to compact   <span class="t-comment">→</span> <a class="t-ref" href="coding-agent/compaction.html">coding-agent/compaction.md</a>
+    src/core/compaction/        plan, summarize, branch summaries (4 files) <span class="t-comment">→</span> <a class="t-ref" href="coding-agent/compaction.html">coding-agent/compaction.md</a>
+    src/core/session-manager.ts the session file and its projection: next time
   tui/, chord/, codemode/, durable/, env/, mcp/, telemetry/, evals/   not covered here</code></pre><h2 id="how-the-modules-connect"><a class="anchor" href="#how-the-modules-connect" aria-hidden="true">#</a>How the modules connect</h2>
 <p>The loop sits in the middle. The coding agent calls into it, and it calls out
 to the model through a function it&#39;s handed (<code>streamFn</code>). It never imports the
 coding agent, which is why it&#39;s easy to reuse.</p>
+<p>Compaction lives in the coding agent, not in the loop. <code>AgentSession</code> checks the
+context size at fixed points, including the loop&#39;s <code>prepareNextTurn</code> hook, and
+asks the compaction module for a summary. The summary is saved in the session
+file, and the next request is rebuilt from it.</p>
 <pre class="mermaid">graph TD
-    codingAgent[coding-agent] --&gt; agentLoop[agent-loop]
+    codingAgent[coding-agent: AgentSession] --&gt; agentLoop[agent-loop]
+    agentLoop -. &quot;prepareNextTurn hook&quot; .-&gt; codingAgent
+    codingAgent --&gt; compaction
+    compaction --&gt; sessions[session file]
+    compaction -. &quot;summary request&quot; .-&gt; ai
     agentLoop -. &quot;streamFn&quot; .-&gt; ai[pi-ai: about 40 LLM providers]
     agentLoop -. &quot;tool.execute&quot; .-&gt; tools[tools: read, bash, edit, write]</pre><h2 id="key-flows"><a class="anchor" href="#key-flows" aria-hidden="true">#</a>Key flows</h2>
 <p>The blog post walks through three runs as sequence diagrams: one turn with a
 tool call, the user typing while the agent works, and the model getting cut off.
 See <a href="/posts/inside-pi-the-agent-loop/#three-runs-step-by-step">Inside Pi: The Agent Loop</a>.</p>
+<p>The compaction post shows when Pi compacts during a run, and what the session
+file looks like before and after. See
+<a href="/posts/inside-pi-context-compaction/">Inside Pi: Context Compaction</a>.</p>
 <h2 id="glossary"><a class="anchor" href="#glossary" aria-hidden="true">#</a>Glossary</h2>
 <div class="table-wrap"><table>
 <thead>
@@ -118,8 +140,48 @@ See <a href="/posts/inside-pi-the-agent-loop/#three-runs-step-by-step">Inside Pi
 <td>Why the model stopped: <code>stop</code> (done), <code>toolUse</code> (wants tools), <code>length</code> (ran out of tokens), <code>error</code>, or <code>aborted</code></td>
 </tr>
 <tr>
+<td>Context window</td>
+<td>The most tokens a model can read in one request</td>
+</tr>
+<tr>
+<td>Compaction</td>
+<td>Replacing old messages with a model-written summary, saved as a <code>compaction</code> entry in the session file</td>
+</tr>
+<tr>
+<td><code>reserveTokens</code></td>
+<td>Room kept free for the reply; Pi compacts when the context passes <code>contextWindow - reserveTokens</code></td>
+</tr>
+<tr>
+<td><code>keepRecentTokens</code></td>
+<td>How much of the newest context compaction keeps word for word</td>
+</tr>
+<tr>
+<td>Session entry</td>
+<td>One line in the session file: a message, a compaction, a branch summary, a setting change, and so on. Each points to its parent, so entries form a tree</td>
+</tr>
+<tr>
+<td>Projection</td>
+<td>The session entries as the model sees them: the latest compaction&#39;s summary, then the kept and newer entries</td>
+</tr>
+<tr>
+<td>User-message span</td>
+<td>A user message and everything after it up to the next user message. The compaction code calls this a &quot;turn&quot; (<code>isSplitTurn</code>)</td>
+</tr>
+<tr>
+<td>Split turn</td>
+<td>A cut that lands inside a user-message span; the start of the span gets its own summary</td>
+</tr>
+<tr>
+<td>Branch summary</td>
+<td>A summary of the branch you leave when you move with <code>/tree</code>, saved as a <code>branch_summary</code> entry</td>
+</tr>
+<tr>
+<td><code>sessionManager.</code></td>
+<td>Prefix for session-file functions in <code>packages/coding-agent/src/core/session-manager.ts</code> (no page yet)</td>
+</tr>
+<tr>
 <td>Rules</td>
-<td>Promises the loop keeps on every run (<code>MUST</code>, <code>MUST NOT</code>, <code>SHOULD</code>)</td>
+<td>Promises a module keeps every time (<code>MUST</code>, <code>MUST NOT</code>, <code>SHOULD</code>)</td>
 </tr>
 <tr>
 <td>Examples</td>
@@ -129,6 +191,7 @@ See <a href="/posts/inside-pi-the-agent-loop/#three-runs-step-by-step">Inside Pi
 </div><h2 id="reading-order"><a class="anchor" href="#reading-order" aria-hidden="true">#</a>Reading order</h2>
 <ol>
 <li><a href="agent/agent-loop.html">agent-loop</a>. Start with <a class="code-link" href="agent/agent-loop.html#runloop"><code>runLoop</code></a>, then follow whichever helper catches your eye. The Rules and Examples at the end are a quick way to see what the loop promises.</li>
+<li><a href="coding-agent/compaction.html">compaction</a>. Start with &quot;When compaction runs&quot;, then <a class="code-link" href="coding-agent/compaction.html#preparecompaction"><code>prepareCompaction</code></a> and <a class="code-link" href="coding-agent/compaction.html#findprojectedcutpoint"><code>findProjectedCutPoint</code></a> for where Pi cuts. Branch summaries are at the end.</li>
 </ol>
 
 </main>

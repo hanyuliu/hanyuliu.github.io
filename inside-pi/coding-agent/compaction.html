@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>compaction · Inside Pi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="layout">
+<aside class="rail">
+<details class="rail-inner" open>
+<summary><a class="brand" href="../index.html">Inside Pi</a>
+<span class="snapshot"><a href="https://github.com/earendil-works/pi/tree/195120a9156b79b0fab67d3a458b5315bed7a33f" target="_blank" rel="noopener">pi @ <code>195120a91</code></a></span></summary>
+<nav><ul class="nav-list"><li><a href="../index.html">Overview</a></li></ul><p class="nav-group">agent</p><ul class="nav-list"><li><a href="../agent/agent-loop.html">agent-loop</a></li></ul><p class="nav-group">coding-agent</p><ul class="nav-list"><li><a href="compaction.html" aria-current="page">compaction</a><ul class="toc"><li class="toc-2"><a href="#contracts">Contracts</a></li><li class="toc-2"><a href="#behavior">Behavior</a></li><li class="toc-3"><a href="#when-compaction-runs">When compaction runs</a></li><li class="toc-3"><a href="#compactbeforenextassistantresponse">_compactBeforeNextAssistantResponse</a></li><li class="toc-3"><a href="#shouldcompact">shouldCompact</a></li><li class="toc-3"><a href="#estimateprojectedcontexttokens">estimateProjectedContextTokens</a></li><li class="toc-3"><a href="#checkcompaction">_checkCompaction</a></li><li class="toc-3"><a href="#runautocompaction">_runAutoCompaction</a></li><li class="toc-3"><a href="#agentsessioncompact">AgentSession.compact</a></li><li class="toc-3"><a href="#preparecompaction">prepareCompaction</a></li><li class="toc-3"><a href="#findprojectedcutpoint">findProjectedCutPoint</a></li><li class="toc-3"><a href="#compact">compact</a></li><li class="toc-3"><a href="#generatesummarywithusage">generateSummaryWithUsage</a></li><li class="toc-3"><a href="#serializeconversation">serializeConversation</a></li><li class="toc-3"><a href="#buildcontextentries">buildContextEntries</a></li><li class="toc-3"><a href="#navigatetree">navigateTree</a></li><li class="toc-3"><a href="#collectentriesforbranchsummary">collectEntriesForBranchSummary</a></li><li class="toc-3"><a href="#preparebranchentries">prepareBranchEntries</a></li><li class="toc-3"><a href="#generatebranchsummary">generateBranchSummary</a></li><li class="toc-2"><a href="#rules">Rules</a></li><li class="toc-2"><a href="#examples">Examples</a></li><li class="toc-2"><a href="#notes">Notes</a></li><li class="toc-2"><a href="#source-map">Source map</a></li></ul></li></ul></nav>
+<div class="legend" aria-label="Color legend">
+<p class="nav-group">reading the code</p>
+<ul>
+<li><span class="t-symbol">blue</span> code name, search the code for it</li>
+<li><span class="t-symbol t-inline">italic</span> named for reading, not in the code; ▸ opens it</li>
+<li><span class="t-type">teal</span> type or class</li>
+<li><span class="t-module">orange</span> crosses into another module</li>
+<li><span class="t-keyword">bold</span> structure</li>
+<li>plain text is a summary</li>
+<li><span class="t-rule-must">MUST</span> <span class="t-rule-should">SHOULD</span> <span class="t-rule-may">MAY</span> rule strength</li>
+<li><span class="t-why"><span class="t-why-lbl">// why:</span></span> keep this behavior</li>
+</ul></div>
+</details>
+</aside>
+<main class="doc doc-module">
+<h1 id="module-compaction"><a class="anchor" href="#module-compaction" aria-hidden="true">#</a>Module: compaction</h1>
+<blockquote>
+<p>Keeps a long session inside the model&#39;s context window. Old messages are replaced by a summary that the model writes, and the newest messages are kept as they are.</p>
+</blockquote>
+<p>A model can only read so many tokens at once. When a session gets close to that
+limit, Pi asks the model to summarize the older part of the conversation, saves
+the summary in the session file, and from then on sends the summary in place of
+those messages.</p>
+<p>This page covers three parts:</p>
+<ul>
+<li><strong>When</strong> compaction runs. That logic lives in <code>AgentSession</code>, the class in the
+coding agent that drives the <a href="../agent/agent-loop.html">agent loop</a>.</li>
+<li><strong>How</strong> it plans and writes a summary. That is the <code>compaction/</code> folder.</li>
+<li><strong>Branch summaries</strong>, a close cousin: when you jump to another branch of the
+session tree, Pi can summarize the branch you&#39;re leaving.</li>
+</ul>
+<p>One word needs care. In the loop, a <em>turn</em> is one reply from the model. In the
+compaction code, a &quot;turn&quot; means a <em>user-message span</em>: a user message and every
+reply and tool result after it, up to the next user message. Names like
+<code>isSplitTurn</code> and <code>turnStartIndex</code> use that second meaning.</p>
+<dl class="meta"><dt>module</dt><dd>compaction</dd><dt>files</dt><dd><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts">packages/coding-agent/src/core/compaction/compaction.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/utils.ts">packages/coding-agent/src/core/compaction/utils.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/branch-summarization.ts">packages/coding-agent/src/core/compaction/branch-summarization.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts">packages/coding-agent/src/core/agent-session.ts</a></span></dd><dt>depends</dt><dd><span class="meta-item"><a href="../agent/agent-loop.html">agent-loop</a></span><span class="meta-item">session-manager</span><span class="meta-item">ai</span></dd><dt>used-by</dt><dd><span class="meta-item">agent-session</span><span class="meta-item">extensions</span></dd></dl><h2 id="contracts"><a class="anchor" href="#contracts" aria-hidden="true">#</a>Contracts</h2>
+<p>Settings. These come from <code>settings.json</code>, and a model can override the two
+token values (<code>compaction.modelOverrides</code>).</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-CompactionSettings">CompactionSettings</span> = {
+    enabled: <span class="t-type">Bool</span>,                 <span class="t-comment">// default true</span>
+    <span class="t-symbol">reserveTokens</span>: <span class="t-type">Int</span>,            <span class="t-comment">// room kept free for the reply; default 16384</span>
+    <span class="t-symbol">keepRecentTokens</span>: <span class="t-type">Int</span>,         <span class="t-comment">// newest context to keep word for word; default 20000</span>
+}</code></pre><p>The plan. <a class="code-link" href="#preparecompaction"><code>prepareCompaction</code></a> works out what to summarize and what to keep,
+without calling the model.</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-CompactionPreparation">CompactionPreparation</span> = {
+    <span class="t-symbol">firstKeptEntryId</span>: <span class="t-type">String</span>,              <span class="t-comment">// first session entry kept as is</span>
+    <span class="t-symbol">messagesToSummarize</span>: <span class="t-type">AgentMessage</span>[],   <span class="t-comment">// older history, goes into the main summary</span>
+    <span class="t-symbol">turnPrefixMessages</span>: <span class="t-type">AgentMessage</span>[],    <span class="t-comment">// start of a split user-message span, if any</span>
+    <span class="t-symbol">isSplitTurn</span>: <span class="t-type">Bool</span>,
+    <span class="t-symbol">tokensBefore</span>: <span class="t-type">Int</span>,                     <span class="t-comment">// estimated context size before compaction</span>
+    <span class="t-symbol">previousSummary</span>: <span class="t-type">String</span>?,              <span class="t-comment">// the last compaction's summary, updated in place</span>
+    <span class="t-symbol">fileOps</span>: <a class="t-type t-link" href="#def-FileOperations" title="FileOperations · compaction">FileOperations</a>,               <span class="t-comment">// files read, written, and edited so far</span>
+    settings: <a class="t-type t-link" href="#def-CompactionSettings" title="CompactionSettings · compaction">CompactionSettings</a>,
+}
+
+<span class="t-keyword">type</span> <span class="t-type t-def" id="def-FileOperations">FileOperations</span> = { read: <span class="t-type">Set</span>&lt;<span class="t-type">String</span>&gt;, written: <span class="t-type">Set</span>&lt;<span class="t-type">String</span>&gt;, edited: <span class="t-type">Set</span>&lt;<span class="t-type">String</span>&gt; }</code></pre><p>The result, and how it is saved. A compaction is an entry in the session tree,
+like a message.</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-CompactionResult">CompactionResult</span> = {
+    summary: <span class="t-type">String</span>,
+    <span class="t-symbol">firstKeptEntryId</span>: <span class="t-type">String</span>,
+    <span class="t-symbol">tokensBefore</span>: <span class="t-type">Int</span>,
+    usage: <span class="t-type">Usage</span>?,                 <span class="t-comment">// tokens spent writing the summary</span>
+    details: <span class="t-type">Any</span>?,                 <span class="t-comment">// Pi's own summaries store { readFiles, modifiedFiles }</span>
+}
+
+<span class="t-keyword">type</span> <span class="t-type t-def" id="def-CompactionEntry">CompactionEntry</span> = <span class="t-type">SessionEntry</span> &amp; {
+    <span class="t-keyword">type</span>: <span class="t-literal">&quot;compaction&quot;</span>,
+    summary: <span class="t-type">String</span>,
+    <span class="t-symbol">firstKeptEntryId</span>: <span class="t-type">String</span>,      <span class="t-comment">// its own id when nothing is kept</span>
+    <span class="t-symbol">tokensBefore</span>: <span class="t-type">Int</span>,
+    <span class="t-symbol">fromHook</span>: <span class="t-type">Bool</span>?,               <span class="t-comment">// true when an extension wrote the summary</span>
+    <span class="t-symbol">systemMessage</span>: <span class="t-type">SystemMessage</span>?, <span class="t-comment">// the system message at the time, replayed after compaction</span>
+    <span class="t-comment">// skipped: details, usage</span>
+}
+
+<span class="t-keyword">type</span> <span class="t-type t-def" id="def-BranchSummaryEntry">BranchSummaryEntry</span> = <span class="t-type">SessionEntry</span> &amp; {
+    <span class="t-keyword">type</span>: <span class="t-literal">&quot;branch_summary&quot;</span>,
+    summary: <span class="t-type">String</span>,
+    <span class="t-symbol">fromId</span>: <span class="t-type">String</span>,                <span class="t-comment">// the entry we navigated away from</span>
+    <span class="t-comment">// skipped: details, usage, fromHook</span>
+}</code></pre><p>Extension hooks. Both can cancel, or supply their own summary instead of Pi&#39;s.</p>
+<pre class="pc"><code>@hook <span class="t-symbol">session_before_compact</span> { preparation, <span class="t-symbol">branchEntries</span>, <span class="t-symbol">customInstructions</span>,
+                               reason: <span class="t-literal">&quot;manual&quot;</span> | <span class="t-literal">&quot;threshold&quot;</span> | <span class="t-literal">&quot;overflow&quot;</span>, <span class="t-symbol">willRetry</span>, signal }
+@hook <span class="t-symbol">session_before_tree</span>    { preparation: { <span class="t-symbol">targetId</span>, <span class="t-symbol">oldLeafId</span>, <span class="t-symbol">commonAncestorId</span>,
+                               <span class="t-symbol">entriesToSummarize</span>, <span class="t-symbol">userWantsSummary</span>, ... }, signal }</code></pre><h2 id="behavior"><a class="anchor" href="#behavior" aria-hidden="true">#</a>Behavior</h2>
+<h3 id="when-compaction-runs"><a class="anchor" href="#when-compaction-runs" aria-hidden="true">#</a>When compaction runs</h3>
+<p>There are four ways in:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Path</th>
+<th>When</th>
+<th>Can retry the turn?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Between turns</td>
+<td>after a turn&#39;s tool results are saved, before the next request in the same run</td>
+<td>no</td>
+</tr>
+<tr>
+<td>After a run</td>
+<td>the low-level loop has ended; checks the last reply</td>
+<td>yes, once, after an overflow</td>
+</tr>
+<tr>
+<td>Before a prompt</td>
+<td>the user sends a new message</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Manual</td>
+<td><code>/compact [instructions]</code>, RPC, or an extension</td>
+<td>no</td>
+</tr>
+</tbody></table>
+</div><p>The first three are automatic and use the same threshold. The manual path
+skips the threshold and always tries.</p>
+<h3 id="compactbeforenextassistantresponse"><a class="anchor" href="#compactbeforenextassistantresponse" aria-hidden="true">#</a>_compactBeforeNextAssistantResponse</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts" title="packages/coding-agent/src/core/agent-session.ts">agent-session.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts#L777">AgentSession._compactBeforeNextAssistantResponse</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts#L768">AgentSession._exceedsCompactionThreshold</a></span></div><p><code>AgentSession</code> installs this on the loop&#39;s <code>prepareNextTurn</code> hook, so it runs
+at the top of every turn after the first. A long tool result can push the
+context over the limit in the middle of a run, and this is where Pi catches it.
+It also rebuilds the context from the session file, so the next request always
+matches what is saved.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">_compactBeforeNextAssistantResponse</span>(context) -&gt; <a class="t-type t-link" href="../agent/agent-loop.html#def-AgentContext" title="AgentContext · agent-loop">AgentContext</a>
+    projection = <span class="t-module">sessionManager</span>.<span class="t-symbol">buildSessionProjection</span>()
+    <span class="t-keyword">if</span> there is no model, or the model is virtual, or not <span class="t-symbol">_exceedsCompactionThreshold</span>(model, projection):
+        <span class="t-keyword">return</span> context with messages = projection.<span class="t-symbol">messages</span>
+    <a class="t-symbol t-link" href="#runautocompaction" title="runAutoCompaction · compaction">_runAutoCompaction</a>(<span class="t-literal">&quot;threshold&quot;</span>, <span class="t-symbol">willRetry</span> = <span class="t-literal">false</span>)
+    <span class="t-keyword">return</span> context with messages = <span class="t-module">sessionManager</span>.<span class="t-symbol">buildSessionProjection</span>().<span class="t-symbol">messages</span>
+
+<span class="t-keyword">fn</span> <span class="t-symbol">_exceedsCompactionThreshold</span>(model, projection) -&gt; <span class="t-type">Bool</span>
+    <span class="t-keyword">if</span> model.<span class="t-symbol">contextWindow</span> &lt;= <span class="t-literal">0</span>:
+        <span class="t-keyword">return</span> <span class="t-literal">false</span>
+    tokens = <a class="t-symbol t-link" href="#estimateprojectedcontexttokens" title="estimateProjectedContextTokens · compaction">estimateProjectedContextTokens</a>(projection, <span class="t-module">sessionManager</span>.<span class="t-symbol">getBranch</span>()).<span class="t-symbol">tokens</span>
+    <span class="t-keyword">return</span> <a class="t-symbol t-link" href="#shouldcompact" title="shouldCompact · compaction">shouldCompact</a>(tokens, model.<span class="t-symbol">contextWindow</span>, settings <span class="t-keyword">for</span> this model)</code></pre><p>A virtual model (one that routes each request to a real model) is checked
+later, in <code>prepareRequest</code>, against the model the request is routed to.</p>
+<p>The loop only calls <code>prepareNextTurn</code> when another request follows. So when a
+tool batch ends the run (every result has <code>terminate</code>), this check does not run.</p>
+<h3 id="shouldcompact"><a class="anchor" href="#shouldcompact" aria-hidden="true">#</a>shouldCompact</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts" title="packages/coding-agent/src/core/compaction/compaction.ts">compaction.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts#L267">shouldCompact</a></span></div><p>The threshold itself.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">shouldCompact</span>(<span class="t-symbol">contextTokens</span>, <span class="t-symbol">contextWindow</span>, settings) -&gt; <span class="t-type">Bool</span>
+    <span class="t-keyword">if</span> not settings.<span class="t-symbol">enabled</span>:
+        <span class="t-keyword">return</span> <span class="t-literal">false</span>
+    <span class="t-keyword">return</span> <span class="t-symbol">contextTokens</span> &gt; <span class="t-symbol">contextWindow</span> - settings.<span class="t-symbol">reserveTokens</span></code></pre><h3 id="estimateprojectedcontexttokens"><a class="anchor" href="#estimateprojectedcontexttokens" aria-hidden="true">#</a>estimateProjectedContextTokens</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts" title="packages/coding-agent/src/core/compaction/compaction.ts">compaction.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts#L227">estimateProjectedContextTokens</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts#L196">estimateContextTokens</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts#L298">estimateTokens</a></span></div><p>Pi needs the size of the context before it sends it. The best number is the
+token count the provider reported for the last reply. Messages added after that
+reply are estimated at 4 characters per token.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">estimateProjectedContextTokens</span>(projection, <span class="t-symbol">branchEntries</span>) -&gt; <span class="t-type">ContextUsageEstimate</span>
+    estimate = <span class="t-symbol">estimateContextTokens</span>(projection.<span class="t-symbol">messages</span>)
+        <span class="t-comment">// the last reply's reported usage, plus estimateTokens() for each later message</span>
+    <span class="t-keyword">if</span> that usage came from an entry after the latest <span class="t-symbol">context_edit</span> or compaction entry:
+        <span class="t-keyword">return</span> estimate
+    <span class="t-why"><span class="t-why-lbl">// why:</span> usage reported before an edit or a compaction describes a context that no longer exists</span>
+    <span class="t-keyword">return</span> the sum of <span class="t-symbol">estimateTokens</span>() over the current system message and every non-system message
+
+<span class="t-keyword">fn</span> <span class="t-symbol">estimateTokens</span>(message) -&gt; <span class="t-type">Int</span>
+    count the characters of its text, thinking, tool call names and arguments, and summaries
+    count each image as <span class="t-literal">4800</span> characters
+    <span class="t-keyword">return</span> <span class="t-symbol">ceil</span>(characters / <span class="t-literal">4</span>)       <span class="t-comment">// rounds up on purpose, so it errs on the high side</span></code></pre><h3 id="checkcompaction"><a class="anchor" href="#checkcompaction" aria-hidden="true">#</a>_checkCompaction</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts" title="packages/coding-agent/src/core/agent-session.ts">agent-session.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts#L2977">AgentSession._checkCompaction</a></span></div><p>Runs after the low-level loop ends (from <code>_handlePostAgentRun</code>), and before a new
+prompt starts (from <code>_prepareRun</code>, with <code>skipAbortedCheck = false</code>). It looks at
+the last reply and decides between overflow recovery and the ordinary threshold.
+It returns whether the session should call <code>agent.continue()</code>.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">_checkCompaction</span>(<span class="t-symbol">assistantMessage</span>, <span class="t-symbol">skipAbortedCheck</span> = <span class="t-literal">true</span>, <span class="t-symbol">toolResults</span> = []) -&gt; <span class="t-type">Bool</span>
+    settings = <span class="t-symbol">settingsManager</span>.<span class="t-symbol">getCompactionSettings</span>(model)
+    <span class="t-keyword">if</span> not settings.<span class="t-symbol">enabled</span>:
+        <span class="t-keyword">return</span> <span class="t-literal">false</span>
+    <span class="t-keyword">if</span> <span class="t-symbol">skipAbortedCheck</span> and <span class="t-symbol">assistantMessage</span>.<span class="t-symbol">stopReason</span> is <span class="t-literal">&quot;aborted&quot;</span>:
+        <span class="t-keyword">return</span> <span class="t-literal">false</span>
+    <span class="t-keyword">if</span> <span class="t-symbol">assistantMessage</span> is older than the latest compaction entry:
+        <span class="t-keyword">return</span> <span class="t-literal">false</span>
+        <span class="t-why"><span class="t-why-lbl">// why:</span> its usage or error describes the context before that compaction</span>
+    <span class="t-symbol">sameModel</span> = <span class="t-symbol">assistantMessage</span> came from the current model
+        <span class="t-why"><span class="t-why-lbl">// why:</span> an overflow from a smaller model must not compact for a larger one</span>
+    <span class="t-symbol">contextOverflow</span> = <span class="t-symbol">sameModel</span> and (the reply is a context-overflow error,
+                      or its reported usage fills the context window)
+    <span class="t-symbol">recoverableLength</span> = <span class="t-symbol">sameModel</span> and <span class="t-symbol">isRecoverableLength</span>(<span class="t-symbol">assistantMessage</span>, model.<span class="t-symbol">maxTokens</span>)
+        <span class="t-comment">// stopped at &quot;length&quot; before reaching the model's own output limit</span>
+    <span class="t-keyword">if</span> <span class="t-symbol">contextOverflow</span> or <span class="t-symbol">recoverableLength</span>:
+        <span class="t-symbol">willRetry</span> = <span class="t-symbol">assistantMessage</span>.<span class="t-symbol">stopReason</span> is not <span class="t-literal">&quot;stop&quot;</span>
+        <span class="t-keyword">if</span> not <span class="t-symbol">willRetry</span>:
+            <span class="t-keyword">return</span> <a class="t-symbol t-link" href="#runautocompaction" title="runAutoCompaction · compaction">_runAutoCompaction</a>(<span class="t-literal">&quot;overflow&quot;</span>, <span class="t-literal">false</span>)   <span class="t-comment">// the answer is complete: keep it</span>
+        <span class="t-keyword">if</span> <span class="t-symbol">_overflowRecoveryAttempted</span>:
+            <span class="t-keyword">emit</span> <span class="t-symbol">compaction_end</span>{<span class="t-symbol">errorMessage</span>: <span class="t-literal">&quot;... recovery failed after one compact-and-retry attempt ...&quot;</span>}
+            <span class="t-keyword">return</span> <span class="t-literal">false</span>
+        <span class="t-symbol">_overflowRecoveryAttempted</span> = <span class="t-literal">true</span>
+        <span class="t-symbol">_omitRecoveryAttempt</span>(<span class="t-symbol">assistantMessage</span>, <span class="t-symbol">toolResults</span>)
+            <span class="t-comment">// saves context_edit entries that hide the failed attempt from the model</span>
+        <span class="t-keyword">return</span> <a class="t-symbol t-link" href="#runautocompaction" title="runAutoCompaction · compaction">_runAutoCompaction</a>(<span class="t-literal">&quot;overflow&quot;</span>, <span class="t-symbol">willRetry</span> = <span class="t-literal">true</span>)
+    <span class="t-symbol">contextTokens</span> = the reply's reported usage, or an estimate when it has none
+        <span class="t-comment">// (error replies, zero usage, and context edits use the estimate;</span>
+        <span class="t-comment">//  if the estimate leans on usage from before the latest compaction: return false)</span>
+    <span class="t-keyword">if</span> <a class="t-symbol t-link" href="#shouldcompact" title="shouldCompact · compaction">shouldCompact</a>(<span class="t-symbol">contextTokens</span>, <span class="t-symbol">contextWindow</span>, settings):
+        <span class="t-keyword">return</span> <a class="t-symbol t-link" href="#runautocompaction" title="runAutoCompaction · compaction">_runAutoCompaction</a>(<span class="t-literal">&quot;threshold&quot;</span>, <span class="t-literal">false</span>)
+    <span class="t-keyword">return</span> <span class="t-literal">false</span></code></pre><p><code>_overflowRecoveryAttempted</code> goes back to false when a user message starts, or
+when a reply ends without <code>"error"</code> or <code>"length"</code>.</p>
+<h3 id="runautocompaction"><a class="anchor" href="#runautocompaction" aria-hidden="true">#</a>_runAutoCompaction</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts" title="packages/coding-agent/src/core/agent-session.ts">agent-session.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts#L3127">AgentSession._runAutoCompaction</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts#L2749">AgentSession._runDefaultCompaction</a></span></div><p>Runs one automatic compaction from plan to saved entry.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">_runAutoCompaction</span>(reason, <span class="t-symbol">willRetry</span>) -&gt; <span class="t-type">Bool</span>
+    preparation = <a class="t-symbol t-link" href="#preparecompaction" title="prepareCompaction · compaction">prepareCompaction</a>(<span class="t-module">sessionManager</span>.<span class="t-symbol">getBranch</span>(), settings)
+    <span class="t-keyword">if</span> no preparation:
+        <span class="t-keyword">return</span> <span class="t-literal">false</span>
+    <span class="t-keyword">emit</span> <span class="t-symbol">compaction_start</span>{reason}
+    <span class="t-keyword">try</span>:
+        result = @hook <span class="t-symbol">session_before_compact</span>{preparation, reason, <span class="t-symbol">willRetry</span>}
+        <span class="t-keyword">if</span> result.<span class="t-symbol">cancel</span>:
+            <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Compaction cancelled&quot;</span>)
+        compaction = result.<span class="t-symbol">compaction</span> or <span class="t-symbol">_runDefaultCompaction</span>(preparation, model, ...)
+            <span class="t-comment">// _runDefaultCompaction resolves the model's auth, then calls compact()</span>
+        <span class="t-module">sessionManager</span>.<span class="t-symbol">appendCompaction</span>(summary, <span class="t-symbol">firstKeptEntryId</span>, <span class="t-symbol">tokensBefore</span>,
+            details, <span class="t-symbol">fromHook</span>, usage)
+        rebuild the agent's messages from the session file
+        <span class="t-keyword">emit</span> <span class="t-symbol">session_compact</span>, then <span class="t-symbol">compaction_end</span>{result}
+        <span class="t-keyword">if</span> <span class="t-symbol">willRetry</span>:
+            <span class="t-keyword">return</span> <span class="t-literal">true</span>                 <span class="t-comment">// run the failed turn again, once</span>
+        <span class="t-keyword">return</span> agent.<span class="t-symbol">hasQueuedMessages</span>()
+        <span class="t-why"><span class="t-why-lbl">// why:</span> messages may have queued up while compacting; continue once to deliver them</span>
+    <span class="t-keyword">catch</span> e:
+        <span class="t-keyword">emit</span> <span class="t-symbol">compaction_end</span>{aborted or <span class="t-symbol">errorMessage</span>}, then <span class="t-symbol">session_compact_failed</span>
+        <span class="t-keyword">return</span> <span class="t-literal">false</span></code></pre><h3 id="agentsessioncompact"><a class="anchor" href="#agentsessioncompact" aria-hidden="true">#</a>AgentSession.compact</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts" title="packages/coding-agent/src/core/agent-session.ts">agent-session.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts#L2794">AgentSession.compact</a></span></div><p>The manual path, used by <code>/compact</code>, RPC, and extensions. It follows the same
+steps as <a class="code-link" href="#runautocompaction"><code>_runAutoCompaction</code></a>, with three differences:</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">compact</span>(<span class="t-symbol">customInstructions</span>?) -&gt; <a class="t-type t-link" href="#def-CompactionResult" title="CompactionResult · compaction">CompactionResult</a>
+    abort the current run first
+    preparation = <a class="t-symbol t-link" href="#preparecompaction" title="prepareCompaction · compaction">prepareCompaction</a>(<span class="t-module">sessionManager</span>.<span class="t-symbol">getBranch</span>(), settings)
+    <span class="t-keyword">if</span> no preparation:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Already compacted&quot;</span>) <span class="t-keyword">if</span> the last entry is a compaction,
+              <span class="t-keyword">else</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Nothing to compact (session too small)&quot;</span>)
+    ... same hook, summary, and save steps as <span class="t-symbol">_runAutoCompaction</span>,
+        with reason <span class="t-literal">&quot;manual&quot;</span> and <span class="t-symbol">customInstructions</span> passed to the summary ...
+    <span class="t-comment">// never retries or continues the interrupted turn</span></code></pre><h3 id="preparecompaction"><a class="anchor" href="#preparecompaction" aria-hidden="true">#</a>prepareCompaction</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts" title="packages/coding-agent/src/core/compaction/compaction.ts">compaction.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts#L872">prepareCompaction</a></span></div><p>Plans a compaction without calling the model. It works on the <em>projection</em>: the
+session entries as the model currently sees them, with the latest compaction
+already applied.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">prepareCompaction</span>(<span class="t-symbol">pathEntries</span>, settings) -&gt; <a class="t-type t-link" href="#def-CompactionPreparation" title="CompactionPreparation · compaction">CompactionPreparation</a>?
+    <span class="t-keyword">if</span> the last entry is a compaction:
+        <span class="t-keyword">return</span> none                                  <span class="t-comment">// nothing new since then</span>
+    projection = <span class="t-module">sessionManager</span>.<span class="t-symbol">buildSessionProjection</span>(<span class="t-symbol">pathEntries</span>)
+    previous = the projected compaction entry, <span class="t-keyword">if</span> any (it always comes first)
+    start = the index after previous, or <span class="t-literal">0</span>
+        <span class="t-comment"><span class="t-note-lbl">// note:</span> this range starts with the messages the previous compaction kept,</span>
+        <span class="t-comment">//       so they get summarized once the recent window moves past them</span>
+    <span class="t-symbol">tokensBefore</span> = <a class="t-symbol t-link" href="#estimateprojectedcontexttokens" title="estimateProjectedContextTokens · compaction">estimateProjectedContextTokens</a>(projection, <span class="t-symbol">pathEntries</span>).<span class="t-symbol">tokens</span>
+    cut = <a class="t-symbol t-link" href="#findprojectedcutpoint" title="findProjectedCutPoint · compaction">findProjectedCutPoint</a>(projection.<span class="t-symbol">entries</span>, start, end, settings.<span class="t-symbol">keepRecentTokens</span>)
+    <span class="t-symbol">historyEnd</span> = cut.<span class="t-symbol">turnStartIndex</span> <span class="t-keyword">if</span> cut.<span class="t-symbol">isSplitTurn</span>, <span class="t-keyword">else</span> cut.<span class="t-symbol">firstKeptEntryIndex</span>
+    <span class="t-symbol">messagesToSummarize</span> = messages of entries [start, <span class="t-symbol">historyEnd</span>), without system messages
+    <span class="t-symbol">turnPrefixMessages</span> = messages of entries [cut.<span class="t-symbol">turnStartIndex</span>, cut.<span class="t-symbol">firstKeptEntryIndex</span>)
+                         <span class="t-keyword">if</span> cut.<span class="t-symbol">isSplitTurn</span>, <span class="t-keyword">else</span> []
+    <span class="t-keyword">if</span> both lists are <span class="t-literal">empty</span>:
+        <span class="t-keyword">return</span> none                                  <span class="t-comment">// everything still fits</span>
+    <span class="t-symbol">fileOps</span> = files from previous.<span class="t-symbol">details</span> (only <span class="t-keyword">if</span> Pi wrote it, <span class="t-symbol">fromHook</span> <span class="t-literal">false</span>)
+              + <a class="t-symbol t-link" href="#serializeconversation" title="serializeConversation · compaction">extractFileOpsFromMessage</a>() <span class="t-keyword">for</span> every message in both lists
+    <span class="t-keyword">return</span> { <span class="t-symbol">firstKeptEntryId</span>, <span class="t-symbol">messagesToSummarize</span>, <span class="t-symbol">turnPrefixMessages</span>, cut.<span class="t-symbol">isSplitTurn</span>,
+             <span class="t-symbol">tokensBefore</span>, <span class="t-symbol">previousSummary</span> = previous.<span class="t-symbol">summary</span>, <span class="t-symbol">fileOps</span>, settings }</code></pre><h3 id="findprojectedcutpoint"><a class="anchor" href="#findprojectedcutpoint" aria-hidden="true">#</a>findProjectedCutPoint</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts" title="packages/coding-agent/src/core/compaction/compaction.ts">compaction.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts#L802">findProjectedCutPoint</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts#L446">findCutPoint</a></span></div><p>Decides where the kept part starts. It walks back from the newest entry until it
+has <code>keepRecentTokens</code> worth, then cuts at the nearest entry where a cut is
+allowed. <code>findCutPoint</code> is the same walk over raw session entries; compaction
+uses the projected version.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">findProjectedCutPoint</span>(entries, start, end, <span class="t-symbol">keepRecentTokens</span>) -&gt; <span class="t-type">CutPointResult</span>
+    <span class="t-symbol">cutPoints</span> = indices of entries with a user, assistant, <span class="t-symbol">bashExecution</span>, custom,
+                or summary message
+        <span class="t-comment">// never a tool result: it must stay right after the tool call that asked for it</span>
+    <span class="t-keyword">if</span> <span class="t-symbol">cutPoints</span> is <span class="t-literal">empty</span>:
+        <span class="t-keyword">return</span> { <span class="t-symbol">firstKeptEntryIndex</span>: start, <span class="t-symbol">turnStartIndex</span>: -<span class="t-literal">1</span>, <span class="t-symbol">isSplitTurn</span>: <span class="t-literal">false</span> }
+    cut = <span class="t-symbol">cutPoints</span>[<span class="t-literal">0</span>]                               <span class="t-comment">// default: keep everything</span>
+    walk back from entries[end - <span class="t-literal">1</span>], adding <a class="t-symbol t-link" href="#estimateprojectedcontexttokens" title="estimateProjectedContextTokens · compaction">estimateTokens</a>() of each entry:
+        once the total reaches <span class="t-symbol">keepRecentTokens</span> at entry i:
+            cut = the first cut point at or after i, or <span class="t-keyword">else</span> the last cut point
+            <span class="t-why"><span class="t-why-lbl">// why:</span> if trailing tool results alone pass the budget, keep the tool call</span>
+            <span class="t-why">//      that made them instead of falling back to the first message (#9740)</span>
+            stop
+    <span class="t-keyword">if</span> everything after cut is an omitted failed attempt (from overflow recovery):
+        cut moves one entry later
+    move cut back over earlier entries that add nothing to the context (labels, settings)
+    <span class="t-symbol">startsTurn</span> = entries[cut] has a user, <span class="t-symbol">bashExecution</span>, custom, or summary message
+    <span class="t-symbol">turnStart</span> = -<span class="t-literal">1</span> <span class="t-keyword">if</span> <span class="t-symbol">startsTurn</span>, <span class="t-keyword">else</span> the nearest earlier entry that starts a span
+    <span class="t-keyword">return</span> { <span class="t-symbol">firstKeptEntryIndex</span>: cut, <span class="t-symbol">turnStartIndex</span>: <span class="t-symbol">turnStart</span>,
+             <span class="t-symbol">isSplitTurn</span>: not <span class="t-symbol">startsTurn</span> and <span class="t-symbol">turnStart</span> != -<span class="t-literal">1</span> }</code></pre><p>When one user-message span is bigger than <code>keepRecentTokens</code>, the cut lands on
+an assistant message inside it. That is a <em>split turn</em>: the start of the span
+gets its own summary, so the kept half still makes sense.</p>
+<h3 id="compact"><a class="anchor" href="#compact" aria-hidden="true">#</a>compact</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts" title="packages/coding-agent/src/core/compaction/compaction.ts">compaction.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts#L965">compact</a></span></div><p>Writes the summary. For a split turn it makes two model calls, one after the
+other, and joins the results.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">compact</span>(preparation, model, <span class="t-symbol">apiKey</span>, ..., <span class="t-symbol">customInstructions</span>?) -&gt; <a class="t-type t-link" href="#def-CompactionResult" title="CompactionResult · compaction">CompactionResult</a>
+    <span class="t-keyword">if</span> preparation.<span class="t-symbol">isSplitTurn</span> and <span class="t-symbol">turnPrefixMessages</span> is not <span class="t-literal">empty</span>:
+        history = <span class="t-symbol">previousSummary</span> or <span class="t-literal">&quot;No prior history.&quot;</span>
+        <span class="t-keyword">if</span> <span class="t-symbol">messagesToSummarize</span> is not <span class="t-literal">empty</span>:
+            history = <a class="t-symbol t-link" href="#generatesummarywithusage" title="generateSummaryWithUsage · compaction">generateSummaryWithUsage</a>(<span class="t-symbol">messagesToSummarize</span>, ..., <span class="t-symbol">previousSummary</span>)
+        prefix = <a class="t-symbol t-link" href="#generatesummarywithusage" title="generateSummaryWithUsage · compaction">generateTurnPrefixSummary</a>(<span class="t-symbol">turnPrefixMessages</span>, ...)
+        summary = history + <span class="t-literal">&quot;\n\n---\n\n**Turn Context (split turn):**\n\n&quot;</span> + prefix
+    <span class="t-keyword">else</span>:
+        summary = <a class="t-symbol t-link" href="#generatesummarywithusage" title="generateSummaryWithUsage · compaction">generateSummaryWithUsage</a>(<span class="t-symbol">messagesToSummarize</span>, ..., <span class="t-symbol">previousSummary</span>)
+    <span class="t-symbol">readFiles</span>, <span class="t-symbol">modifiedFiles</span> = <a class="t-symbol t-link" href="#serializeconversation" title="serializeConversation · compaction">computeFileLists</a>(<span class="t-symbol">fileOps</span>)
+    summary += <span class="t-symbol">formatFileOperations</span>(<span class="t-symbol">readFiles</span>, <span class="t-symbol">modifiedFiles</span>)
+    <span class="t-keyword">return</span> { summary, <span class="t-symbol">firstKeptEntryId</span>, <span class="t-symbol">tokensBefore</span>, usage of both calls,
+             details: { <span class="t-symbol">readFiles</span>, <span class="t-symbol">modifiedFiles</span> } }</code></pre><h3 id="generatesummarywithusage"><a class="anchor" href="#generatesummarywithusage" aria-hidden="true">#</a>generateSummaryWithUsage</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts" title="packages/coding-agent/src/core/compaction/compaction.ts">compaction.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts#L696">generateSummaryWithUsage</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts#L1076">generateTurnPrefixSummary</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/compaction.ts#L619">completeSummarization</a></span></div><p>One summary request. The conversation goes in as plain text inside a single user
+message, not as a chat history.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">generateSummaryWithUsage</span>(messages, model, <span class="t-symbol">reserveTokens</span>, ..., <span class="t-symbol">customInstructions</span>?, <span class="t-symbol">previousSummary</span>?)
+        -&gt; { text, usage }
+    <span class="t-symbol">maxTokens</span> = <span class="t-symbol">min</span>(<span class="t-literal">0.8</span> * <span class="t-symbol">reserveTokens</span>, model.<span class="t-symbol">maxTokens</span>)
+    prompt = <span class="t-symbol">UPDATE_SUMMARIZATION_PROMPT</span> <span class="t-keyword">if</span> <span class="t-symbol">previousSummary</span>, <span class="t-keyword">else</span> <span class="t-symbol">SUMMARIZATION_PROMPT</span>
+    <span class="t-keyword">if</span> <span class="t-symbol">customInstructions</span>:
+        prompt += <span class="t-literal">&quot;\n\nAdditional focus: &quot;</span> + <span class="t-symbol">customInstructions</span>
+    text = <span class="t-literal">&quot;&lt;conversation&gt;&quot;</span> + <a class="t-symbol t-link" href="#serializeconversation" title="serializeConversation · compaction">serializeConversation</a>(<span class="t-symbol">convertToLlm</span>(messages)) + <span class="t-literal">&quot;&lt;/conversation&gt;&quot;</span>
+    <span class="t-keyword">if</span> <span class="t-symbol">previousSummary</span>:
+        text += <span class="t-literal">&quot;&lt;previous-summary&gt;&quot;</span> + <span class="t-symbol">previousSummary</span> + <span class="t-literal">&quot;&lt;/previous-summary&gt;&quot;</span>
+    response = <span class="t-symbol">completeSummarization</span>(model, system: <span class="t-symbol">SUMMARIZATION_SYSTEM_PROMPT</span>,
+                                     user: text + prompt, <span class="t-symbol">maxTokens</span>)
+        <span class="t-comment">// cacheRetention &quot;none&quot;     why: a one-off prompt is not worth a cache write</span>
+        <span class="t-comment">// retried on dropped streams with the session's retry policy</span>
+    <span class="t-keyword">if</span> response.<span class="t-symbol">stopReason</span> is <span class="t-literal">&quot;error&quot;</span> or <span class="t-literal">&quot;length&quot;</span>:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(...)        <span class="t-why"><span class="t-why-lbl">// why:</span> a cut-off summary must never become a checkpoint</span>
+    <span class="t-keyword">if</span> response has a tool call:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Summarization attempted to call a tool&quot;</span>)
+    <span class="t-keyword">return</span> text of response, response.<span class="t-symbol">usage</span></code></pre><p><code>generateTurnPrefixSummary</code> is the same call with a smaller output cap
+(<code>0.5 * reserveTokens</code>) and <code>TURN_PREFIX_SUMMARIZATION_PROMPT</code>, which asks for
+three sections: Original Request, Progress So Far, and Context Needed to Continue.</p>
+<p>The main prompt asks for a fixed format: Goal, Constraints &amp; Preferences,
+Progress (Done, In Progress, Blocked), Key Decisions, Next Steps, and Critical
+Context. The update prompt asks the model to keep everything from the previous
+summary, add what is new, and move finished items from In Progress to Done.</p>
+<h3 id="serializeconversation"><a class="anchor" href="#serializeconversation" aria-hidden="true">#</a>serializeConversation</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/utils.ts" title="packages/coding-agent/src/core/compaction/utils.ts">utils.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/utils.ts#L120">serializeConversation</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/utils.ts#L30">extractFileOpsFromMessage</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/utils.ts#L67">computeFileLists</a></span></div><p>Turns messages into the text the summarizer reads, and collects file paths from
+tool calls along the way.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">serializeConversation</span>(messages) -&gt; <span class="t-type">String</span>
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> message:
+        <span class="t-keyword">match</span> message.<span class="t-symbol">role</span>:
+            <span class="t-literal">&quot;user&quot;</span>:        <span class="t-literal">&quot;[User]: &quot;</span> + text
+            <span class="t-literal">&quot;assistant&quot;</span>:   <span class="t-literal">&quot;[Assistant]: &quot;</span> + text
+                           <span class="t-literal">&quot;[Assistant tool calls]: read(path=\&quot;a.ts\&quot;); edit(path=\&quot;b.ts\&quot;, ...)&quot;</span>
+            <span class="t-literal">&quot;toolResult&quot;</span>:  <span class="t-literal">&quot;[Tool result]: &quot;</span> + the first <span class="t-literal">2000</span> characters,
+                           then <span class="t-literal">&quot;[... N more characters truncated]&quot;</span>
+        <span class="t-comment">// thinking is left out</span>
+        <span class="t-why"><span class="t-why-lbl">// why:</span> replayed thinking is often not in the model's live context, and it can make</span>
+        <span class="t-why">//      the request bigger than the context it summarizes</span>
+    join with blank lines
+
+<span class="t-keyword">fn</span> <span class="t-symbol">extractFileOpsFromMessage</span>(message, <span class="t-symbol">fileOps</span>)
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> read, write, or edit tool call with a path argument:
+        add the path to <span class="t-symbol">fileOps</span>.<span class="t-symbol">read</span>, .<span class="t-symbol">written</span>, or .<span class="t-symbol">edited</span>
+    <span class="t-comment">// also the calls a codemode script made, recorded as nestedCalls on its tool result</span>
+
+<span class="t-keyword">fn</span> <span class="t-symbol">computeFileLists</span>(<span class="t-symbol">fileOps</span>) -&gt; { <span class="t-symbol">readFiles</span>, <span class="t-symbol">modifiedFiles</span> }
+    <span class="t-symbol">modifiedFiles</span> = edited + written, sorted
+    <span class="t-symbol">readFiles</span> = read minus <span class="t-symbol">modifiedFiles</span>, sorted</code></pre><h3 id="buildcontextentries"><a class="anchor" href="#buildcontextentries" aria-hidden="true">#</a>buildContextEntries</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L476">buildContextEntries</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1261">SessionManager.appendCompaction</a></span></div><p>Nothing is deleted from the session file. A compaction is a new entry at the end
+of the branch, and the projection decides what the model sees.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">buildContextEntries</span>(entries, <span class="t-symbol">leafId</span>) -&gt; <span class="t-type">SessionEntry</span>[]
+    path = the entries from the root to <span class="t-symbol">leafId</span>
+    compaction = the last compaction entry on path
+    <span class="t-keyword">if</span> no compaction:
+        <span class="t-keyword">return</span> path
+    result = [compaction]                    <span class="t-comment">// turns into the summary message</span>
+    add the path entries from <span class="t-module">compaction</span>.<span class="t-symbol">firstKeptEntryId</span> up to the compaction,
+        skipping system messages
+    add every entry after the compaction
+    <span class="t-keyword">return</span> result</code></pre><p>The compaction entry projects to two messages: the system message saved on it,
+then a <code>compactionSummary</code> message. <code>convertToLlm</code> sends the summary to the model
+as a user message: &quot;The conversation history before this point was compacted
+into the following summary: <code><summary></code> ... <code></summary></code>&quot;.</p>
+<h3 id="navigatetree"><a class="anchor" href="#navigatetree" aria-hidden="true">#</a>navigateTree</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts" title="packages/coding-agent/src/core/agent-session.ts">agent-session.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts#L3994">AgentSession.navigateTree</a></span></div><p><code>/tree</code> moves to another point in the session tree. If the user asks for it,
+Pi first summarizes the branch being left, and attaches that summary at the new
+position.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">navigateTree</span>(<span class="t-symbol">targetId</span>, options) -&gt; { <span class="t-symbol">editorText</span>?, cancelled, <span class="t-symbol">summaryEntry</span>? }
+    <span class="t-keyword">if</span> a response is streaming or a compaction is running:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Wait for ...&quot;</span>)
+    entries, <span class="t-symbol">commonAncestorId</span> = <a class="t-symbol t-link" href="#collectentriesforbranchsummary" title="collectEntriesForBranchSummary · compaction">collectEntriesForBranchSummary</a>(<span class="t-symbol">sessionManager</span>, <span class="t-symbol">oldLeafId</span>, <span class="t-symbol">targetId</span>)
+    result = @hook <span class="t-symbol">session_before_tree</span>{preparation}
+    <span class="t-keyword">if</span> result.<span class="t-symbol">cancel</span>:
+        <span class="t-keyword">return</span> { cancelled: <span class="t-literal">true</span> }
+    <span class="t-keyword">if</span> options.<span class="t-symbol">summarize</span> and entries is not <span class="t-literal">empty</span>:
+        summary = result.<span class="t-symbol">summary</span> or <a class="t-symbol t-link" href="#generatebranchsummary" title="generateBranchSummary · compaction">generateBranchSummary</a>(entries, ...)
+    <span class="t-symbol">newLeaf</span> = the target's parent <span class="t-keyword">if</span> the target is a user message (its text goes back
+              into the editor), <span class="t-keyword">else</span> the target
+    <span class="t-keyword">if</span> summary:
+        <span class="t-module">sessionManager</span>.<span class="t-symbol">branchWithSummary</span>(<span class="t-symbol">newLeaf</span>, summary, ...)   <span class="t-comment">// a branch_summary entry</span>
+    <span class="t-keyword">else</span>:
+        <span class="t-module">sessionManager</span>.<span class="t-symbol">branch</span>(<span class="t-symbol">newLeaf</span>)</code></pre><h3 id="collectentriesforbranchsummary"><a class="anchor" href="#collectentriesforbranchsummary" aria-hidden="true">#</a>collectEntriesForBranchSummary</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/branch-summarization.ts" title="packages/coding-agent/src/core/compaction/branch-summarization.ts">branch-summarization.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/branch-summarization.ts#L108">collectEntriesForBranchSummary</a></span></div><pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">collectEntriesForBranchSummary</span>(session, <span class="t-symbol">oldLeafId</span>, <span class="t-symbol">targetId</span>) -&gt; { entries, <span class="t-symbol">commonAncestorId</span> }
+    <span class="t-keyword">if</span> no <span class="t-symbol">oldLeafId</span>:
+        <span class="t-keyword">return</span> { entries: [], <span class="t-symbol">commonAncestorId</span>: <span class="t-literal">null</span> }
+    <span class="t-symbol">commonAncestorId</span> = the deepest entry on both the old path and the target path
+    entries = walk parent links from <span class="t-symbol">oldLeafId</span> up to <span class="t-symbol">commonAncestorId</span> (not included),
+              then reverse, oldest first
+        <span class="t-comment"><span class="t-note-lbl">// note:</span> does not stop at compaction entries; their summaries become input too</span></code></pre><h3 id="preparebranchentries"><a class="anchor" href="#preparebranchentries" aria-hidden="true">#</a>prepareBranchEntries</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/branch-summarization.ts" title="packages/coding-agent/src/core/compaction/branch-summarization.ts">branch-summarization.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/branch-summarization.ts#L195">prepareBranchEntries</a></span></div><p>Fits the abandoned branch into a token budget, keeping the newest part.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">prepareBranchEntries</span>(entries, <span class="t-symbol">tokenBudget</span>) -&gt; <span class="t-type">BranchPreparation</span>
+    <span class="t-symbol">fileOps</span> = the file lists of Pi-written <span class="t-symbol">branch_summary</span> entries in entries
+    walk entries from newest to oldest:
+        message = the entry as a message (tool results are skipped; compaction and
+                  <span class="t-symbol">branch_summary</span> entries become summary messages)
+        add its file operations to <span class="t-symbol">fileOps</span>
+        <span class="t-keyword">if</span> <span class="t-symbol">tokenBudget</span> &gt; <span class="t-literal">0</span> and adding message would pass <span class="t-symbol">tokenBudget</span>:
+            <span class="t-keyword">if</span> it is a compaction or branch summary and the total is under <span class="t-literal">90</span>% of <span class="t-symbol">tokenBudget</span>:
+                keep it anyway           <span class="t-why"><span class="t-why-lbl">// why:</span> (code comment) a summary is important context</span>
+            stop
+        keep message
+    <span class="t-keyword">return</span> { kept messages oldest first, <span class="t-symbol">fileOps</span>, <span class="t-symbol">totalTokens</span> }</code></pre><h3 id="generatebranchsummary"><a class="anchor" href="#generatebranchsummary" aria-hidden="true">#</a>generateBranchSummary</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/branch-summarization.ts" title="packages/coding-agent/src/core/compaction/branch-summarization.ts">branch-summarization.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/compaction/branch-summarization.ts#L293">generateBranchSummary</a></span></div><pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">generateBranchSummary</span>(entries, options) -&gt; <span class="t-type">BranchSummaryResult</span>
+    <span class="t-symbol">tokenBudget</span> = (model.<span class="t-symbol">contextWindow</span> or <span class="t-literal">128000</span>) - (options.<span class="t-symbol">reserveTokens</span> or <span class="t-literal">16384</span>)
+    messages, <span class="t-symbol">fileOps</span> = <a class="t-symbol t-link" href="#preparebranchentries" title="prepareBranchEntries · compaction">prepareBranchEntries</a>(entries, <span class="t-symbol">tokenBudget</span>)
+    <span class="t-keyword">if</span> messages is <span class="t-literal">empty</span>:
+        <span class="t-keyword">return</span> { summary: <span class="t-literal">&quot;No content to summarize&quot;</span> }
+    instructions = <span class="t-symbol">BRANCH_SUMMARY_PROMPT</span>, with options.<span class="t-symbol">customInstructions</span> appended,
+                   or replaced by them when options.<span class="t-symbol">replaceInstructions</span>
+    response = <a class="t-symbol t-link" href="#generatesummarywithusage" title="generateSummaryWithUsage · compaction">completeSummarization</a>(..., <span class="t-symbol">maxTokens</span> = <span class="t-symbol">min</span>(<span class="t-literal">4096</span>, model.<span class="t-symbol">maxTokens</span>))
+    <span class="t-keyword">if</span> response was aborted:
+        <span class="t-keyword">return</span> { aborted: <span class="t-literal">true</span> }
+    <span class="t-keyword">if</span> response stopped at <span class="t-literal">&quot;error&quot;</span> or <span class="t-literal">&quot;length&quot;</span>, or has a tool call:
+        <span class="t-keyword">return</span> { error }
+    summary = <span class="t-symbol">BRANCH_SUMMARY_PREAMBLE</span> + text + <span class="t-symbol">formatFileOperations</span>(<a class="t-symbol t-link" href="#serializeconversation" title="serializeConversation · compaction">computeFileLists</a>(<span class="t-symbol">fileOps</span>))
+    <span class="t-keyword">return</span> { summary, usage, <span class="t-symbol">readFiles</span>, <span class="t-symbol">modifiedFiles</span> }</code></pre><p>The branch format is the compaction format without Critical Context. The
+preamble tells the model: &quot;The user explored a different conversation branch
+before returning here.&quot;</p>
+<h2 id="rules"><a class="anchor" href="#rules" aria-hidden="true">#</a>Rules</h2>
+<pre class="pc"><code><span class="t-rule-must">MUST</span>     compact automatically only when <span class="t-symbol">contextTokens</span> &gt; <span class="t-symbol">contextWindow</span> - <span class="t-symbol">reserveTokens</span>
+<span class="t-rule-must">MUST</span>     check the threshold between turns, after a run, and before a <span class="t-keyword">new</span> prompt
+<span class="t-rule-must">MUST NOT</span> check between turns after a tool batch that ends the run
+<span class="t-rule-must">MUST NOT</span> cut at a tool result
+         <span class="t-why"><span class="t-why-lbl">// why:</span> a tool result must stay right after the tool call that asked for it</span>
+<span class="t-rule-must">MUST</span>     keep the newest messages, about <span class="t-symbol">keepRecentTokens</span> worth, as they are
+<span class="t-rule-must">MUST</span>     summarize the start of a split user-message span separately, and append it
+         to the history summary
+<span class="t-rule-must">MUST</span>     pass the previous summary to the next compaction, and ask the model to update it
+<span class="t-rule-must">MUST NOT</span> compact again when the last entry is already a compaction
+<span class="t-rule-must">MUST</span>     send the conversation to the summarizer as text, not as chat messages
+         <span class="t-why"><span class="t-why-lbl">// why:</span> so the model does not try to continue the conversation</span>
+<span class="t-rule-must">MUST</span>     cut each tool result to <span class="t-literal">2000</span> characters in the summarizer's input
+<span class="t-rule-must">MUST NOT</span> include thinking in the summarizer's input
+<span class="t-rule-must">MUST NOT</span> save a summary whose reply stopped at <span class="t-literal">&quot;error&quot;</span> or <span class="t-literal">&quot;length&quot;</span>, or that calls a tool
+<span class="t-rule-must">MUST NOT</span> write to the prompt cache <span class="t-keyword">for</span> summary requests
+<span class="t-rule-must">MUST</span>     carry file lists forward only from summaries Pi wrote (<span class="t-symbol">fromHook</span> is not <span class="t-literal">true</span>)
+<span class="t-rule-must">MUST</span>     let <span class="t-symbol">session_before_compact</span> cancel a compaction or supply the summary
+<span class="t-rule-must">MUST</span>     retry a turn that overflowed or was cut off at most once, until a user message
+         starts or a reply succeeds
+<span class="t-rule-must">MUST NOT</span> retry a reply that finished normally (<span class="t-symbol">stopReason</span> <span class="t-literal">&quot;stop&quot;</span>); compact only
+<span class="t-rule-must">MUST</span>     ignore replies that are older than the latest compaction
+<span class="t-rule-must">MUST NOT</span> delete entries from the session file; a compaction only adds an entry</code></pre><h2 id="examples"><a class="anchor" href="#examples" aria-hidden="true">#</a>Examples</h2>
+<div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/compaction.test.ts#L275" title="packages/coding-agent/test/compaction.test.ts">compaction.test.ts <span class="src-sep">›</span> “should return true when context exceeds threshold”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> <span class="t-symbol">reserveTokens</span> = <span class="t-literal">10000</span> and a context window of <span class="t-literal">100000</span>
+<span class="t-example">WHEN</span>  <span class="t-symbol">shouldCompact</span> runs with <span class="t-literal">95000</span> tokens, then with <span class="t-literal">89000</span> tokens
+<span class="t-example">THEN</span>  it returns <span class="t-literal">true</span>, then <span class="t-literal">false</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/compaction.test.ts#L378" title="packages/coding-agent/test/compaction.test.ts">compaction.test.ts <span class="src-sep">›</span> “should fall back to the latest valid cut point before oversized trailing tool results”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> entries: user <span class="t-literal">&quot;old history&quot;</span>, assistant <span class="t-literal">&quot;old answer&quot;</span>, user <span class="t-literal">&quot;read the large file&quot;</span>,
+      assistant read{path: <span class="t-literal">&quot;big.txt&quot;</span>}, tool result of <span class="t-literal">8000</span> characters
+  <span class="t-example">AND</span> <span class="t-symbol">keepRecentTokens</span> = <span class="t-literal">1000</span>
+<span class="t-example">WHEN</span>  <span class="t-symbol">prepareCompaction</span> runs
+<span class="t-example">THEN</span>  <span class="t-symbol">firstKeptEntryId</span> is the assistant read call
+  <span class="t-example">AND</span> <span class="t-symbol">messagesToSummarize</span> is [<span class="t-literal">&quot;old history&quot;</span>, <span class="t-literal">&quot;old answer&quot;</span>]
+  <span class="t-example">AND</span> <span class="t-symbol">turnPrefixMessages</span> is [<span class="t-literal">&quot;read the large file&quot;</span>], so the turn is split</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/compaction.test.ts#L524" title="packages/coding-agent/test/compaction.test.ts">compaction.test.ts <span class="src-sep">›</span> “should skip repeated compactions when kept messages still fit”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a compaction that kept the last two user messages
+  <span class="t-example">AND</span> one more exchange after it, still under <span class="t-symbol">keepRecentTokens</span> = <span class="t-literal">20000</span>
+<span class="t-example">WHEN</span>  <span class="t-symbol">prepareCompaction</span> runs
+<span class="t-example">THEN</span>  it returns nothing, so no compaction happens</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/compaction.test.ts#L541" title="packages/coding-agent/test/compaction.test.ts">compaction.test.ts <span class="src-sep">›</span> “should re-summarize previously kept messages when the recent window moves past them”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a compaction with summary <span class="t-literal">&quot;First summary&quot;</span> that kept user messages <span class="t-literal">2</span> and <span class="t-literal">3</span>
+  <span class="t-example">AND</span> <span class="t-symbol">keepRecentTokens</span> = <span class="t-literal">100</span>, so the newest exchange fills the budget
+<span class="t-example">WHEN</span>  <span class="t-symbol">prepareCompaction</span> runs
+<span class="t-example">THEN</span>  <span class="t-symbol">messagesToSummarize</span> contains user messages <span class="t-literal">2</span> and <span class="t-literal">3</span>
+  <span class="t-example">AND</span> <span class="t-symbol">previousSummary</span> is <span class="t-literal">&quot;First summary&quot;</span>, and the summary text itself is not re-summarized</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/compaction-serialization.test.ts#L6" title="packages/coding-agent/test/compaction-serialization.test.ts">compaction-serialization.test.ts <span class="src-sep">›</span> “should truncate long tool results”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a tool result of <span class="t-literal">5000</span> characters
+<span class="t-example">WHEN</span>  <span class="t-symbol">serializeConversation</span> runs
+<span class="t-example">THEN</span>  the output has the first <span class="t-literal">2000</span> characters
+  <span class="t-example">AND</span> ends with <span class="t-literal">&quot;[... 3000 more characters truncated]&quot;</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/suite/agent-session-compaction.test.ts#L552" title="packages/coding-agent/test/suite/agent-session-compaction.test.ts">agent-session-compaction.test.ts <span class="src-sep">›</span> “includes steering queued during compaction in the resumed assistant request”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a <span class="t-literal">2600</span>-token context window, <span class="t-symbol">reserveTokens</span> = <span class="t-literal">400</span>, <span class="t-symbol">keepRecentTokens</span> = <span class="t-literal">1750</span>
+  <span class="t-example">AND</span> a tool whose result is <span class="t-literal">6800</span> characters
+<span class="t-example">WHEN</span>  the model calls the tool, and the user types <span class="t-literal">&quot;change direction&quot;</span> <span class="t-keyword">while</span> compaction runs
+<span class="t-example">THEN</span>  <span class="t-type">Pi</span> compacts between turns, without retrying anything
+  <span class="t-example">AND</span> the next request contains <span class="t-literal">&quot;change direction&quot;</span>
+  <span class="t-example">AND</span> the model is called <span class="t-literal">4</span> times in total</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/suite/agent-session-compaction.test.ts#L617" title="packages/coding-agent/test/suite/agent-session-compaction.test.ts">agent-session-compaction.test.ts <span class="src-sep">›</span> “does not compact after a terminating tool result”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> the same small context window
+  <span class="t-example">AND</span> a tool that returns <span class="t-literal">6800</span> characters with terminate = <span class="t-literal">true</span>
+<span class="t-example">WHEN</span>  the model calls it
+<span class="t-example">THEN</span>  no <span class="t-symbol">compaction_start</span> event is emitted and no compaction entry is saved</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/suite/agent-session-compaction.test.ts#L805" title="packages/coding-agent/test/suite/agent-session-compaction.test.ts">agent-session-compaction.test.ts <span class="src-sep">›</span> “does not retry overflow recovery more than once”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a reply that failed with <span class="t-literal">&quot;prompt is too long&quot;</span>
+<span class="t-example">WHEN</span>  <span class="t-symbol">_checkCompaction</span> runs <span class="t-keyword">for</span> it, then <span class="t-keyword">for</span> a second overflowing reply
+<span class="t-example">THEN</span>  <span class="t-symbol">_runAutoCompaction</span> is called once
+  <span class="t-example">AND</span> the second check reports &quot;Context overflow recovery failed after one
+      compact-and-retry attempt. ...&quot;</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/suite/agent-session-compaction.test.ts#L831" title="packages/coding-agent/test/suite/agent-session-compaction.test.ts">agent-session-compaction.test.ts <span class="src-sep">›</span> “compacts successful overflow responses without retrying”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a context window of <span class="t-literal">1</span> token
+<span class="t-example">WHEN</span>  the model answers <span class="t-literal">&quot;completed answer&quot;</span> normally
+<span class="t-example">THEN</span>  <span class="t-symbol">compaction_end</span> has reason <span class="t-literal">&quot;overflow&quot;</span> and <span class="t-symbol">willRetry</span> = <span class="t-literal">false</span>
+  <span class="t-example">AND</span> the model is called only once</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/suite/regressions/7048-compaction-truncated-summary.test.ts#L40" title="packages/coding-agent/test/suite/regressions/7048-compaction-truncated-summary.test.ts">7048-compaction-truncated-summary.test.ts <span class="src-sep">›</span> “does not persist a length-limited summary”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a session with something to compact
+  <span class="t-example">AND</span> the summarizer's reply <span class="t-literal">&quot;partial summar&quot;</span> stops with <span class="t-literal">&quot;length&quot;</span>
+<span class="t-example">WHEN</span>  <a class="t-symbol t-link" href="#agentsessioncompact" title="AgentSession.compact · compaction">compact</a>() runs
+<span class="t-example">THEN</span>  it throws <span class="t-literal">&quot;generation hit the token cap&quot;</span>
+  <span class="t-example">AND</span> no compaction entry is saved</code></pre><h2 id="notes"><a class="anchor" href="#notes" aria-hidden="true">#</a>Notes</h2>
+<p>Most of the size of a session comes from tool results, especially <code>read</code> and
+<code>bash</code>. That is why the summarizer sees only the first 2000 characters of each
+one: it needs to know what happened, not every line of output.</p>
+<p>Summaries build on each other. Each compaction passes the previous summary to
+the model and asks it to update it, rather than starting over. The file lists
+work the same way: each compaction starts from the lists saved on the previous
+one and adds the new paths.</p>
+<p>Extensions can replace Pi&#39;s summarizer entirely. A <code>session_before_compact</code>
+handler can return its own <code>summary</code> and <code>firstKeptEntryId</code>, for example to use
+a cheaper model. Pi then saves it with <code>fromHook: true</code> and does not carry file
+lists from it.</p>
+<p>Compaction does not change the agent loop. The loop only sees a <code>prepareNextTurn</code>
+hook that returns a new context, and a shorter conversation on the next request.</p>
+<h2 id="source-map"><a class="anchor" href="#source-map" aria-hidden="true">#</a>Source map</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Pseudocode</th>
+<th>Real code</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a class="code-link" href="#compactbeforenextassistantresponse"><code>_compactBeforeNextAssistantResponse</code></a></td>
+<td><a class="code-link" href="#compactbeforenextassistantresponse"><code>AgentSession._compactBeforeNextAssistantResponse</code></a>, <a class="code-link" href="#compactbeforenextassistantresponse"><code>AgentSession._exceedsCompactionThreshold</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#shouldcompact"><code>shouldCompact</code></a></td>
+<td><a class="code-link" href="#shouldcompact"><code>shouldCompact</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#estimateprojectedcontexttokens"><code>estimateProjectedContextTokens</code></a></td>
+<td><a class="code-link" href="#estimateprojectedcontexttokens"><code>estimateProjectedContextTokens</code></a>, <a class="code-link" href="#estimateprojectedcontexttokens"><code>estimateContextTokens</code></a>, <a class="code-link" href="#estimateprojectedcontexttokens"><code>estimateTokens</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#checkcompaction"><code>_checkCompaction</code></a></td>
+<td><a class="code-link" href="#checkcompaction"><code>AgentSession._checkCompaction</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#runautocompaction"><code>_runAutoCompaction</code></a></td>
+<td><a class="code-link" href="#runautocompaction"><code>AgentSession._runAutoCompaction</code></a>, <a class="code-link" href="#runautocompaction"><code>AgentSession._runDefaultCompaction</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#agentsessioncompact"><code>AgentSession.compact</code></a></td>
+<td><a class="code-link" href="#agentsessioncompact"><code>AgentSession.compact</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#preparecompaction"><code>prepareCompaction</code></a></td>
+<td><a class="code-link" href="#preparecompaction"><code>prepareCompaction</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#findprojectedcutpoint"><code>findProjectedCutPoint</code></a></td>
+<td><a class="code-link" href="#findprojectedcutpoint"><code>findProjectedCutPoint</code></a>, <a class="code-link" href="#findprojectedcutpoint"><code>findCutPoint</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#agentsessioncompact"><code>compact</code></a></td>
+<td><a class="code-link" href="#agentsessioncompact"><code>compact</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#generatesummarywithusage"><code>generateSummaryWithUsage</code></a></td>
+<td><a class="code-link" href="#generatesummarywithusage"><code>generateSummaryWithUsage</code></a>, <a class="code-link" href="#generatesummarywithusage"><code>generateTurnPrefixSummary</code></a>, <a class="code-link" href="#generatesummarywithusage"><code>completeSummarization</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#serializeconversation"><code>serializeConversation</code></a></td>
+<td><a class="code-link" href="#serializeconversation"><code>serializeConversation</code></a>, <a class="code-link" href="#serializeconversation"><code>extractFileOpsFromMessage</code></a>, <a class="code-link" href="#serializeconversation"><code>computeFileLists</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#buildcontextentries"><code>buildContextEntries</code></a></td>
+<td><a class="code-link" href="#buildcontextentries"><code>buildContextEntries</code></a>, <a class="code-link" href="#buildcontextentries"><code>SessionManager.appendCompaction</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#navigatetree"><code>navigateTree</code></a></td>
+<td><a class="code-link" href="#navigatetree"><code>AgentSession.navigateTree</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#collectentriesforbranchsummary"><code>collectEntriesForBranchSummary</code></a>, <a class="code-link" href="#preparebranchentries"><code>prepareBranchEntries</code></a>, <a class="code-link" href="#generatebranchsummary"><code>generateBranchSummary</code></a></td>
+<td>same names</td>
+<td>same</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>AgentSession._omitRecoveryAttempt</code>, <code>AgentSession._installAgentNextTurnRefresh</code>, <code>AgentSession._installAgentRequestProjection</code></td>
+<td>omitted: overflow bookkeeping and hook wiring</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>generateSummary</code>, <code>getLastAssistantUsage</code>, <code>calculateContextTokens</code>, <code>getSummarizationFailure</code>, <code>createSummarizationOptions</code>, <code>buildSummarizationContext</code>, <code>formatFileOperations</code></td>
+<td>omitted: small wrappers and builders</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td>the rest of <code>AgentSession</code> and <code>session-manager.ts</code></td>
+<td>omitted: covered in later posts</td>
+</tr>
+</tbody></table>
+</div>
+</main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(function () {
+  try {
+    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    window.mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "strict" });
+  } catch (e) {}
+  var rail = document.querySelector(".rail-inner");
+  if (rail && window.matchMedia("(max-width: 900px)").matches) rail.open = false;
+  document.querySelectorAll(".fold-tools button").forEach(function (b) {
+    var pre = b.parentElement.nextElementSibling;
+    b.addEventListener("click", function () {
+      var open = b.dataset.fold === "open";
+      pre.querySelectorAll("details.fold").forEach(function (d) { d.open = open; });
+      b.dataset.fold = open ? "close" : "open";
+      b.textContent = open ? "close all ▾" : "open all ▸";
+    });
+  });
+})();
+</script>
+</body>
+</html>
