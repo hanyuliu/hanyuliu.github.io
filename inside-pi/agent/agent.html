@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>agent · Inside Pi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="layout">
+<aside class="rail">
+<details class="rail-inner" open>
+<summary><a class="brand" href="../index.html">Inside Pi</a>
+<span class="snapshot"><a href="https://github.com/earendil-works/pi/tree/195120a9156b79b0fab67d3a458b5315bed7a33f" target="_blank" rel="noopener">pi @ <code>195120a91</code></a></span></summary>
+<nav><ul class="nav-list"><li><a href="../index.html">Overview</a></li></ul><p class="nav-group">agent</p><ul class="nav-list"><li><a href="agent-loop.html">agent-loop</a></li><li><a href="agent.html" aria-current="page">agent</a><ul class="toc"><li class="toc-2"><a href="#contracts">Contracts</a></li><li class="toc-2"><a href="#behavior">Behavior</a></li><li class="toc-3"><a href="#prompt">prompt</a></li><li class="toc-3"><a href="#continue">continue</a></li><li class="toc-3"><a href="#runpromptmessages">runPromptMessages</a></li><li class="toc-3"><a href="#runwithlifecycle">runWithLifecycle</a></li><li class="toc-3"><a href="#handlerunfailure">handleRunFailure</a></li><li class="toc-3"><a href="#createloopconfig">createLoopConfig</a></li><li class="toc-3"><a href="#pendingmessagequeue">PendingMessageQueue</a></li><li class="toc-3"><a href="#processevents">processEvents</a></li><li class="toc-3"><a href="#abort-and-waitforidle">abort and waitForIdle</a></li><li class="toc-3"><a href="#reset">reset</a></li><li class="toc-3"><a href="#createmutableagentstate">createMutableAgentState</a></li><li class="toc-3"><a href="#peekqueuedmessages">peekQueuedMessages</a></li><li class="toc-2"><a href="#rules">Rules</a></li><li class="toc-2"><a href="#examples">Examples</a></li><li class="toc-2"><a href="#notes">Notes</a></li><li class="toc-2"><a href="#source-map">Source map</a></li></ul></li></ul><p class="nav-group">coding-agent</p><ul class="nav-list"><li><a href="../coding-agent/compaction.html">compaction</a></li></ul></nav>
+<div class="legend" aria-label="Color legend">
+<p class="nav-group">reading the code</p>
+<ul>
+<li><span class="t-symbol">blue</span> code name, search the code for it</li>
+<li><span class="t-symbol t-inline">italic</span> named for reading, not in the code; ▸ opens it</li>
+<li><span class="t-type">teal</span> type or class</li>
+<li><span class="t-module">orange</span> crosses into another module</li>
+<li><span class="t-keyword">bold</span> structure</li>
+<li>plain text is a summary</li>
+<li><span class="t-rule-must">MUST</span> <span class="t-rule-should">SHOULD</span> <span class="t-rule-may">MAY</span> rule strength</li>
+<li><span class="t-why"><span class="t-why-lbl">// why:</span></span> keep this behavior</li>
+</ul></div>
+</details>
+</aside>
+<main class="doc doc-module">
+<h1 id="module-agent"><a class="anchor" href="#module-agent" aria-hidden="true">#</a>Module: agent</h1>
+<blockquote>
+<p>A stateful wrapper around the agent loop. It keeps the conversation between runs, holds the steering and follow-up queues, owns the abort switch, and tells listeners about every event.</p>
+</blockquote>
+<p>The loop from <a href="agent-loop.html">agent-loop</a> keeps no state. Each call gets a
+conversation and a config, and forgets both when it returns. Something has to
+remember the conversation from one run to the next, hold the messages the user
+types while a run is going, and give the app one place to subscribe to events.
+That is <a class="code-link" href="#def-Agent"><code>Agent</code></a>, in one file of about 600 lines.</p>
+<p>Most of the class is plumbing. The interesting parts are small: two queues that
+the loop drains through its <code>getSteeringMessages</code> and <code>getFollowUpMessages</code>
+config functions, one <code>AbortController</code> per run, and a function that turns loop
+events into state. The conversation the app reads from <code>agent.state.messages</code>
+is built only from <code>message_end</code> events, so the app and the loop never write to
+the same array.</p>
+<dl class="meta"><dt>module</dt><dd>agent</dd><dt>files</dt><dd><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts">packages/agent/src/agent.ts</a></span></dd><dt>depends</dt><dd><span class="meta-item"><a href="agent-loop.html">agent-loop</a></span><span class="meta-item">ai</span></dd><dt>used-by</dt><dd><span class="meta-item">coding-agent</span></dd></dl><h2 id="contracts"><a class="anchor" href="#contracts" aria-hidden="true">#</a>Contracts</h2>
+<p>The state an app can read. <code>messages</code> and <code>tools</code> can also be assigned; the
+rest is set by the agent itself.</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-AgentState">AgentState</span> = {
+    <span class="t-symbol">systemPrompt</span>: <span class="t-type">String</span>,              <span class="t-comment">// read-only: replayed from the system messages in `messages`</span>
+    model: <span class="t-type">Model</span>,                      <span class="t-comment">// used for future turns</span>
+    <span class="t-symbol">thinkingLevel</span>: <span class="t-type">ThinkingLevel</span>,      <span class="t-comment">// &quot;off&quot; | &quot;minimal&quot; | ... | &quot;max&quot;</span>
+    tools: <a class="t-type t-link" href="agent-loop.html#def-AgentTool" title="AgentTool · agent-loop">AgentTool</a>[],                <span class="t-comment">// assigning copies the array</span>
+    messages: <span class="t-type">AgentMessage</span>[],          <span class="t-comment">// the conversation; assigning copies the array</span>
+    <span class="t-symbol">isStreaming</span>: <span class="t-type">Bool</span>,                 <span class="t-comment">// read-only: true until a run's agent_end listeners finish</span>
+    <span class="t-symbol">streamingMessage</span>: <span class="t-type">AgentMessage</span>?,   <span class="t-comment">// read-only: the model's reply while it streams</span>
+    <span class="t-symbol">pendingToolCalls</span>: <span class="t-type">Set</span>&lt;<span class="t-type">String</span>&gt;,     <span class="t-comment">// read-only: ids of tool calls still running</span>
+    <span class="t-symbol">errorMessage</span>: <span class="t-type">String</span>?,             <span class="t-comment">// read-only: from the last failed or aborted reply</span>
+}
+
+<span class="t-keyword">type</span> <span class="t-type t-def" id="def-QueueMode">QueueMode</span> = <span class="t-literal">&quot;all&quot;</span> | <span class="t-literal">&quot;one-at-a-time&quot;</span></code></pre><p>What you pass to the constructor. Only <code>streamFn</code> is required. Most fields are
+copied to public properties of the same name, so the app can change them later,
+and are handed to the loop on every run.</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-AgentOptions">AgentOptions</span> = {
+    <span class="t-symbol">initialState</span>: { <span class="t-symbol">systemPrompt</span>?, model?, <span class="t-symbol">thinkingLevel</span>?, tools?, messages? } ?,
+    <span class="t-symbol">streamFn</span>: <a class="t-type t-link" href="agent-loop.html#def-StreamFn" title="StreamFn · agent-loop">StreamFn</a>,                     <span class="t-comment">// calls the model; see agent-loop</span>
+    <span class="t-symbol">steeringMode</span>: <a class="t-type t-link" href="#def-QueueMode" title="QueueMode · agent">QueueMode</a> ?,              <span class="t-comment">// default &quot;one-at-a-time&quot;</span>
+    <span class="t-symbol">followUpMode</span>: <a class="t-type t-link" href="#def-QueueMode" title="QueueMode · agent">QueueMode</a> ?,              <span class="t-comment">// default &quot;one-at-a-time&quot;</span>
+    <span class="t-symbol">convertToLlm</span>: <span class="t-keyword">fn</span>(<span class="t-type">AgentMessage</span>[]) -&gt; <span class="t-type">Message</span>[] ?,   <span class="t-comment">// default: drop app-only message types</span>
+    <span class="t-symbol">toolExecution</span>: <span class="t-literal">&quot;sequential&quot;</span> | <span class="t-literal">&quot;parallel&quot;</span> ?,        <span class="t-comment">// default &quot;parallel&quot;</span>
+    <span class="t-symbol">prepareNextTurn</span>: <span class="t-keyword">async</span> <span class="t-keyword">fn</span>(signal?) -&gt; <span class="t-type">AgentLoopTurnUpdate</span>? ?,
+    <span class="t-symbol">prepareNextTurnWithContext</span>: <span class="t-keyword">async</span> <span class="t-keyword">fn</span>(context, signal?) -&gt; <span class="t-type">AgentLoopTurnUpdate</span>? ?,
+    <span class="t-comment">// skipped: the other loop hooks (beforeToolCall, afterToolCall, finishTurn,</span>
+    <span class="t-comment">//          prepareRequest, transformContext, getApiKey) and the stream options</span>
+    <span class="t-comment">//          (sessionId, transport, thinkingBudgets, maxRetryDelayMs, onPayload,</span>
+    <span class="t-comment">//          onResponse, onProviderStreamEvent). They go to the loop unchanged.</span>
+}</code></pre><p>The public methods.</p>
+<pre class="pc"><code><span class="t-keyword">class</span> <span class="t-type t-def" id="def-Agent">Agent</span>(options: <a class="t-type t-link" href="#def-AgentOptions" title="AgentOptions · agent">AgentOptions</a>)
+    state: <a class="t-type t-link" href="#def-AgentState" title="AgentState · agent">AgentState</a>
+    <span class="t-symbol">steeringMode</span>: <a class="t-type t-link" href="#def-QueueMode" title="QueueMode · agent">QueueMode</a>                  <span class="t-comment">// get and set</span>
+    <span class="t-symbol">followUpMode</span>: <a class="t-type t-link" href="#def-QueueMode" title="QueueMode · agent">QueueMode</a>                  <span class="t-comment">// get and set</span>
+    signal: <span class="t-type">AbortSignal</span>?                     <span class="t-comment">// the current run's signal, if a run is active</span>
+
+    <span class="t-keyword">async</span> <a class="t-symbol t-link" href="#prompt" title="prompt · agent">prompt</a>(input: <span class="t-type">String</span>, images?) | <a class="t-symbol t-link" href="#prompt" title="prompt · agent">prompt</a>(message | message[])
+    <span class="t-keyword">async</span> <span class="t-keyword">continue</span>()
+    <span class="t-symbol">steer</span>(message)                           <span class="t-comment">// add to the steering queue</span>
+    <span class="t-symbol">followUp</span>(message)                        <span class="t-comment">// add to the follow-up queue</span>
+    <span class="t-symbol">clearSteeringQueue</span>(), <span class="t-symbol">clearFollowUpQueue</span>(), <span class="t-symbol">clearAllQueues</span>()
+    <a class="t-symbol t-link" href="#peekqueuedmessages" title="peekQueuedMessages · agent">hasQueuedMessages</a>() -&gt; <span class="t-type">Bool</span>
+    <a class="t-symbol t-link" href="#peekqueuedmessages" title="peekQueuedMessages · agent">peekQueuedMessages</a>() -&gt; <span class="t-type">AgentMessage</span>[]   <span class="t-comment">// what the next drain would return, without removing it</span>
+    <a class="t-symbol t-link" href="#abort-and-waitforidle" title="abort and waitForIdle · agent">abort</a>()
+    <a class="t-symbol t-link" href="#abort-and-waitforidle" title="abort and waitForIdle · agent">waitForIdle</a>() -&gt; <span class="t-type">Promise</span>
+    <a class="t-symbol t-link" href="#reset" title="reset · agent">reset</a>()
+    <span class="t-symbol">subscribe</span>(listener: <span class="t-keyword">async</span> <span class="t-keyword">fn</span>(event: <a class="t-type t-link" href="agent-loop.html#def-AgentEvent" title="AgentEvent · agent-loop">AgentEvent</a>, signal: <span class="t-type">AbortSignal</span>)) -&gt; unsubscribe <span class="t-keyword">fn</span></code></pre><h2 id="behavior"><a class="anchor" href="#behavior" aria-hidden="true">#</a>Behavior</h2>
+<h3 id="prompt"><a class="anchor" href="#prompt" aria-hidden="true">#</a>prompt</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts" title="packages/agent/src/agent.ts">agent.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L371">Agent.prompt</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L413">Agent.normalizePromptInput</a></span></div><p>Starts a run with new messages. A string becomes one user message, with any
+images added after the text. Only one run can be active at a time.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">prompt</span>(input, images?)
+    <span class="t-keyword">if</span> <span class="t-symbol">activeRun</span> exists:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(&quot;Agent is already processing a prompt. Use <span class="t-symbol">steer</span>() or <span class="t-symbol">followUp</span>() to
+                     queue messages, or wait <span class="t-keyword">for</span> completion.&quot;)
+    messages = <span class="t-keyword">match</span> input:
+        a list:     input
+        a message:  [input]
+        a string:   [user message with text input, then images]
+    <a class="t-symbol t-link" href="#runpromptmessages" title="runPromptMessages · agent">runPromptMessages</a>(messages)</code></pre><h3 id="continue"><a class="anchor" href="#continue" aria-hidden="true">#</a>continue</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts" title="packages/agent/src/agent.ts">agent.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L384">Agent.continue</a></span></div><p>Starts a run without a new prompt. The loop refuses to continue from an
+assistant message, so when the conversation ends with one, <code>continue</code> looks in
+the queues for something to send instead.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-keyword">continue</span>()
+    <span class="t-keyword">if</span> <span class="t-symbol">activeRun</span> exists:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Agent is already processing. Wait for completion before continuing.&quot;</span>)
+    <span class="t-keyword">if</span> messages is <span class="t-literal">empty</span>, or holds only system messages:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;No messages to continue from&quot;</span>)
+    <span class="t-keyword">if</span> the last message is from the assistant:
+        queued = <span class="t-symbol">steeringQueue</span>.<span class="t-symbol">drain</span>()
+        <span class="t-keyword">if</span> queued is not <span class="t-literal">empty</span>:
+            <a class="t-symbol t-link" href="#runpromptmessages" title="runPromptMessages · agent">runPromptMessages</a>(queued, <span class="t-symbol">skipInitialSteeringPoll</span> = <span class="t-literal">true</span>)
+            <span class="t-why"><span class="t-why-lbl">// why:</span> (test: &quot;continue() keeps $mode steering semantics for assistant-tail fallback&quot;)</span>
+            <span class="t-why">//      the loop polls steering at the start of a run. Without the skip, that poll</span>
+            <span class="t-why">//      would add the next steering message to this same request.</span>
+            <span class="t-keyword">return</span>
+        queued = <span class="t-symbol">followUpQueue</span>.<span class="t-symbol">drain</span>()
+        <span class="t-keyword">if</span> queued is not <span class="t-literal">empty</span>:
+            <a class="t-symbol t-link" href="#runpromptmessages" title="runPromptMessages · agent">runPromptMessages</a>(queued)
+            <span class="t-keyword">return</span>
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Cannot continue from message role: assistant&quot;</span>)
+    <a class="t-symbol t-link" href="#runpromptmessages" title="runPromptMessages · agent">runContinuation</a>()            <span class="t-comment">// last message is user or toolResult: the loop picks up from it</span></code></pre><h3 id="runpromptmessages"><a class="anchor" href="#runpromptmessages" aria-hidden="true">#</a>runPromptMessages</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts" title="packages/agent/src/agent.ts">agent.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L432">Agent.runPromptMessages</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L448">Agent.runContinuation</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L460">Agent.createContextSnapshot</a></span></div><p>Both kinds of run look the same: a lifecycle wrapper around one call into the
+loop. The loop gets a copy of the conversation and the tools, never the arrays
+in <code>state</code>.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">runPromptMessages</span>(messages, options)
+    <a class="t-symbol t-link" href="#runwithlifecycle" title="runWithLifecycle · agent">runWithLifecycle</a>(signal -&gt;
+        <span class="t-module">agentLoop</span>.<a class="t-symbol t-link" href="agent-loop.html#runagentloop" title="runAgentLoop · agent-loop">runAgentLoop</a>(messages,
+                               { messages: copy of state.<span class="t-symbol">messages</span>, tools: copy of state.<span class="t-symbol">tools</span> },
+                               <a class="t-symbol t-link" href="#createloopconfig" title="createLoopConfig · agent">createLoopConfig</a>(options),
+                               <span class="t-keyword">emit</span> = <span class="t-symbol">processEvents</span>,
+                               signal, <span class="t-symbol">streamFunction</span>))
+
+<span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">runContinuation</span>()
+    <a class="t-symbol t-link" href="#runwithlifecycle" title="runWithLifecycle · agent">runWithLifecycle</a>(signal -&gt;
+        <span class="t-module">agentLoop</span>.<a class="t-symbol t-link" href="agent-loop.html#runagentloopcontinue" title="runAgentLoopContinue · agent-loop">runAgentLoopContinue</a>(copy of messages and tools, <a class="t-symbol t-link" href="#createloopconfig" title="createLoopConfig · agent">createLoopConfig</a>(),
+                                       <span class="t-symbol">processEvents</span>, signal, <span class="t-symbol">streamFunction</span>))</code></pre><h3 id="runwithlifecycle"><a class="anchor" href="#runwithlifecycle" aria-hidden="true">#</a>runWithLifecycle</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts" title="packages/agent/src/agent.ts">agent.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L507">Agent.runWithLifecycle</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L550">Agent.finishRun</a></span></div><p>Creates the run: a fresh <code>AbortController</code> and a promise that <a class="code-link" href="#abort-and-waitforidle"><code>waitForIdle</code></a>
+returns. If the loop throws, the failure becomes a normal error reply. The run
+always ends in <code>finishRun</code>.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">runWithLifecycle</span>(executor)
+    <span class="t-keyword">if</span> <span class="t-symbol">activeRun</span> exists:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Agent is already processing.&quot;</span>)
+    <span class="t-symbol">activeRun</span> = { promise, resolve, <span class="t-symbol">abortController</span>: <span class="t-keyword">new</span> <span class="t-type">AbortController</span>() }
+    state.<span class="t-symbol">isStreaming</span> = <span class="t-literal">true</span>
+    state.<span class="t-symbol">streamingMessage</span>, state.<span class="t-symbol">errorMessage</span> = none
+    <span class="t-keyword">try</span>:
+        <span class="t-symbol">executor</span>(<span class="t-symbol">abortController</span>.<span class="t-symbol">signal</span>)
+    <span class="t-keyword">catch</span> error:
+        <a class="t-symbol t-link" href="#handlerunfailure" title="handleRunFailure · agent">handleRunFailure</a>(error, aborted = <span class="t-symbol">abortController</span>.<span class="t-symbol">signal</span>.<span class="t-symbol">aborted</span>)
+    <span class="t-keyword">finally</span>:
+        <span class="t-symbol">finishRun</span>()
+
+<span class="t-keyword">fn</span> <span class="t-symbol">finishRun</span>()
+    state.<span class="t-symbol">isStreaming</span> = <span class="t-literal">false</span>
+    state.<span class="t-symbol">streamingMessage</span> = none
+    state.<span class="t-symbol">pendingToolCalls</span> = <span class="t-literal">empty</span> set
+    resolve <span class="t-symbol">activeRun</span>.<span class="t-symbol">promise</span>                <span class="t-comment">// waitForIdle() returns now</span>
+    <span class="t-symbol">activeRun</span> = none</code></pre><h3 id="handlerunfailure"><a class="anchor" href="#handlerunfailure" aria-hidden="true">#</a>handleRunFailure</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts" title="packages/agent/src/agent.ts">agent.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L532">Agent.handleRunFailure</a></span></div><p>The loop turns model and tool errors into messages, so it rarely throws. When
+something does throw (for example a <code>streamFn</code> that throws instead of returning
+an error stream), the agent makes up an empty assistant reply and sends the
+events a normal failed turn would send.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">handleRunFailure</span>(error, aborted)
+    reply = assistant message {
+        content: [<span class="t-literal">empty</span> text],
+        <span class="t-symbol">stopReason</span>: <span class="t-literal">&quot;aborted&quot;</span> <span class="t-keyword">if</span> aborted <span class="t-keyword">else</span> <span class="t-literal">&quot;error&quot;</span>,
+        <span class="t-symbol">errorMessage</span>: error.<span class="t-symbol">message</span>,
+        usage: all zero,
+    }
+    <a class="t-symbol t-link" href="#processevents" title="processEvents · agent">processEvents</a>(<span class="t-symbol">message_start</span>{reply})
+    <a class="t-symbol t-link" href="#processevents" title="processEvents · agent">processEvents</a>(<span class="t-symbol">message_end</span>{reply})          <span class="t-comment">// adds reply to state.messages</span>
+    <a class="t-symbol t-link" href="#processevents" title="processEvents · agent">processEvents</a>(<span class="t-symbol">turn_end</span>{reply, <span class="t-symbol">toolResults</span>: []})
+    <a class="t-symbol t-link" href="#processevents" title="processEvents · agent">processEvents</a>(<span class="t-symbol">agent_end</span>{messages: [reply]})
+    <span class="t-comment"><span class="t-note-lbl">// note:</span> no agent_start or turn_start of its own. In the usual case the loop sent them</span>
+    <span class="t-comment">//       before it threw.</span></code></pre><h3 id="createloopconfig"><a class="anchor" href="#createloopconfig" aria-hidden="true">#</a>createLoopConfig</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts" title="packages/agent/src/agent.ts">agent.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L467">Agent.createLoopConfig</a></span></div><p>Builds the config for one run. Most fields are copied from the agent&#39;s public
+properties. Three fields connect the loop back to the agent: the two queue
+functions, and <code>prepareNextTurn</code>.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">createLoopConfig</span>(options) -&gt; <a class="t-type t-link" href="agent-loop.html#def-AgentLoopConfig" title="AgentLoopConfig · agent-loop">AgentLoopConfig</a>
+    skip = options.<span class="t-symbol">skipInitialSteeringPoll</span>
+    <span class="t-keyword">return</span> {
+        model: state.<span class="t-symbol">model</span>,
+        reasoning: state.<span class="t-symbol">thinkingLevel</span>, with <span class="t-literal">&quot;off&quot;</span> meaning none,
+        hooks and stream options: copied from this agent,
+        <span class="t-symbol">getSteeringMessages</span>: <span class="t-keyword">async</span> <span class="t-keyword">fn</span>():
+            <span class="t-keyword">if</span> skip:
+                skip = <span class="t-literal">false</span>
+                <span class="t-keyword">return</span> []                    <span class="t-comment">// only the first poll is skipped</span>
+            <span class="t-keyword">return</span> <span class="t-symbol">steeringQueue</span>.<span class="t-symbol">drain</span>(),
+        <span class="t-symbol">getFollowUpMessages</span>: <span class="t-keyword">async</span> <span class="t-keyword">fn</span>(): <span class="t-symbol">followUpQueue</span>.<span class="t-symbol">drain</span>(),
+        <span class="t-symbol">prepareNextTurn</span>: <span class="t-keyword">if</span> either prepare hook is set, <span class="t-keyword">async</span> <span class="t-keyword">fn</span>(context):
+            <span class="t-keyword">if</span> <span class="t-symbol">prepareNextTurnWithContext</span> is set:
+                <span class="t-keyword">return</span> <span class="t-symbol">prepareNextTurnWithContext</span>(context, signal)
+            <span class="t-keyword">return</span> <span class="t-symbol">prepareNextTurn</span>(signal)   <span class="t-comment">// older form: gets no context</span>
+    }</code></pre><h3 id="pendingmessagequeue"><a class="anchor" href="#pendingmessagequeue" aria-hidden="true">#</a>PendingMessageQueue</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts" title="packages/agent/src/agent.ts">agent.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L143">PendingMessageQueue</a></span></div><p>Both queues are this small class. The mode decides how much one <code>drain</code> takes.
+The mode can change at any time, and the next drain uses the new one.</p>
+<pre class="pc"><code><span class="t-keyword">class</span> <span class="t-type t-def" id="def-PendingMessageQueue">PendingMessageQueue</span>(mode: <a class="t-type t-link" href="#def-QueueMode" title="QueueMode · agent">QueueMode</a>)
+    messages = []
+
+    <span class="t-keyword">fn</span> <span class="t-symbol">enqueue</span>(message):  messages.<span class="t-symbol">add</span>(message)
+    <span class="t-keyword">fn</span> <span class="t-symbol">hasItems</span>() -&gt; <span class="t-type">Bool</span>: messages is not <span class="t-literal">empty</span>
+    <span class="t-keyword">fn</span> <span class="t-symbol">peek</span>() -&gt; <span class="t-type">AgentMessage</span>[]
+        <span class="t-keyword">if</span> mode is <span class="t-literal">&quot;all&quot;</span>: <span class="t-keyword">return</span> copy of messages
+        <span class="t-keyword">return</span> [messages[<span class="t-literal">0</span>]] <span class="t-keyword">if</span> there is one, <span class="t-keyword">else</span> []
+    <span class="t-keyword">fn</span> <span class="t-symbol">drain</span>() -&gt; <span class="t-type">AgentMessage</span>[]
+        taken = <span class="t-symbol">peek</span>()
+        remove taken from the front of messages
+        <span class="t-keyword">return</span> taken
+    <span class="t-keyword">fn</span> <span class="t-symbol">clear</span>(): messages = []</code></pre><h3 id="processevents"><a class="anchor" href="#processevents" aria-hidden="true">#</a>processEvents</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts" title="packages/agent/src/agent.ts">agent.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L565">Agent.processEvents</a></span></div><p>Every loop event goes through here. First it updates the state, then it calls
+each listener in the order they subscribed, and waits for each one before
+calling the next. The loop waits for this function, so a slow listener slows
+the run.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">processEvents</span>(event)
+    <span class="t-keyword">match</span> event.<span class="t-symbol">type</span>:
+        <span class="t-symbol">message_start</span>, <span class="t-symbol">message_update</span>:
+            state.<span class="t-symbol">streamingMessage</span> = event.<span class="t-symbol">message</span>
+        <span class="t-symbol">message_end</span>:
+            state.<span class="t-symbol">streamingMessage</span> = none
+            state.<span class="t-symbol">messages</span>.<span class="t-symbol">add</span>(event.<span class="t-symbol">message</span>)     <span class="t-comment">// the only place the run adds to the conversation</span>
+        <span class="t-symbol">tool_execution_start</span>:
+            state.<span class="t-symbol">pendingToolCalls</span> = copy with event.<span class="t-symbol">toolCallId</span> added
+        <span class="t-symbol">tool_execution_end</span>:
+            state.<span class="t-symbol">pendingToolCalls</span> = copy with event.<span class="t-symbol">toolCallId</span> removed
+            <span class="t-comment"><span class="t-note-lbl">// note:</span> a new Set each time; the old one is never changed</span>
+        <span class="t-symbol">turn_end</span>:
+            <span class="t-keyword">if</span> event.<span class="t-symbol">message</span> is an assistant reply with an <span class="t-symbol">errorMessage</span>:
+                state.<span class="t-symbol">errorMessage</span> = event.<span class="t-symbol">message</span>.<span class="t-symbol">errorMessage</span>
+        <span class="t-symbol">agent_end</span>:
+            state.<span class="t-symbol">streamingMessage</span> = none
+    <span class="t-keyword">if</span> no run is active:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Agent listener invoked outside active run&quot;</span>)
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> listener in listeners, in subscribe order:
+        <span class="t-keyword">await</span> <span class="t-symbol">listener</span>(event, <span class="t-symbol">activeRun</span>.<span class="t-symbol">abortController</span>.<span class="t-symbol">signal</span>)</code></pre><h3 id="abort-and-waitforidle"><a class="anchor" href="#abort-and-waitforidle" aria-hidden="true">#</a>abort and waitForIdle</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts" title="packages/agent/src/agent.ts">agent.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L341">Agent.abort</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L350">Agent.waitForIdle</a></span></div><p><code>abort</code> fires the current run&#39;s signal. It does not stop anything by itself:
+the loop, the model stream, and the tools all watch the signal and stop on
+their own. The queues are left as they are.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">abort</span>()
+    <span class="t-symbol">activeRun</span>?.<span class="t-symbol">abortController</span>.<span class="t-symbol">abort</span>()        <span class="t-comment">// does nothing when idle</span>
+
+<span class="t-keyword">fn</span> <span class="t-symbol">waitForIdle</span>() -&gt; <span class="t-type">Promise</span>
+    <span class="t-keyword">return</span> <span class="t-symbol">activeRun</span>.<span class="t-symbol">promise</span> <span class="t-keyword">if</span> a run is active, <span class="t-keyword">else</span> a resolved promise
+    <span class="t-comment"><span class="t-note-lbl">// note:</span> the promise resolves in finishRun, after the agent_end listeners have finished</span></code></pre><h3 id="reset"><a class="anchor" href="#reset" aria-hidden="true">#</a>reset</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts" title="packages/agent/src/agent.ts">agent.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L355">Agent.reset</a></span></div><p>Clears the conversation and both queues, but keeps the current system prompt and
+tools. It folds every system message in the conversation into one, so the reset
+conversation starts with the same prompt and tools the model saw last.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">reset</span>()
+    <span class="t-keyword">if</span> <span class="t-symbol">activeRun</span> exists:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Agent is already processing. Wait for completion before resetting.&quot;</span>)
+    baseline = <span class="t-module">transcript</span>.<span class="t-symbol">getCurrentSystemMessage</span>(state.<span class="t-symbol">messages</span>)
+    state.<span class="t-symbol">messages</span> = [baseline] <span class="t-keyword">if</span> there is one, <span class="t-keyword">else</span> []
+    state.<span class="t-symbol">isStreaming</span> = <span class="t-literal">false</span>
+    state.<span class="t-symbol">streamingMessage</span>, state.<span class="t-symbol">errorMessage</span> = none
+    state.<span class="t-symbol">pendingToolCalls</span> = <span class="t-literal">empty</span> set
+    clear both queues</code></pre><h3 id="createmutableagentstate"><a class="anchor" href="#createmutableagentstate" aria-hidden="true">#</a>createMutableAgentState</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts" title="packages/agent/src/agent.ts">agent.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L82">createMutableAgentState</a></span></div><p>Sets up the state when the agent is built. The system prompt and tools from
+<code>initialState</code> become the first message of the conversation, unless the
+messages already start with a system message.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">createMutableAgentState</span>(<span class="t-symbol">initialState</span>) -&gt; <span class="t-type">MutableAgentState</span>
+    tools = copy of <span class="t-symbol">initialState</span>.<span class="t-symbol">tools</span> or []
+    messages = copy of <span class="t-symbol">initialState</span>.<span class="t-symbol">messages</span> or []
+    first = <span class="t-module">transcript</span>.<span class="t-symbol">createInitialSystemMessage</span>(<span class="t-symbol">initialState</span>.<span class="t-symbol">systemPrompt</span>, tools as declarations)
+    <span class="t-keyword">if</span> messages[<span class="t-literal">0</span>] is not a system message and first exists:
+        put first at the start of messages
+    <span class="t-keyword">return</span> {
+        <span class="t-symbol">systemPrompt</span>: computed each time as <span class="t-module">transcript</span>.<span class="t-symbol">getCurrentSystemPrompt</span>(messages),
+        model: <span class="t-symbol">initialState</span>.<span class="t-symbol">model</span> or a placeholder model with id <span class="t-literal">&quot;unknown&quot;</span>,
+        <span class="t-symbol">thinkingLevel</span>: <span class="t-symbol">initialState</span>.<span class="t-symbol">thinkingLevel</span> or <span class="t-literal">&quot;off&quot;</span>,
+        tools, messages: setters copy the array they are given,
+        <span class="t-symbol">isStreaming</span>: <span class="t-literal">false</span>, <span class="t-symbol">pendingToolCalls</span>: <span class="t-literal">empty</span> set,
+    }</code></pre><h3 id="peekqueuedmessages"><a class="anchor" href="#peekqueuedmessages" aria-hidden="true">#</a>peekQueuedMessages</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts" title="packages/agent/src/agent.ts">agent.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L330">Agent.peekQueuedMessages</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/src/agent.ts#L325">Agent.hasQueuedMessages</a></span></div><p>Shows what the next turn would get, without removing it. Steering always comes
+first.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">peekQueuedMessages</span>() -&gt; <span class="t-type">AgentMessage</span>[]
+    steering = <span class="t-symbol">steeringQueue</span>.<span class="t-symbol">peek</span>()
+    <span class="t-keyword">return</span> steering <span class="t-keyword">if</span> it is not <span class="t-literal">empty</span>, <span class="t-keyword">else</span> <span class="t-symbol">followUpQueue</span>.<span class="t-symbol">peek</span>()
+
+<span class="t-keyword">fn</span> <span class="t-symbol">hasQueuedMessages</span>() -&gt; <span class="t-type">Bool</span>
+    <span class="t-keyword">return</span> <span class="t-symbol">steeringQueue</span>.<span class="t-symbol">hasItems</span>() or <span class="t-symbol">followUpQueue</span>.<span class="t-symbol">hasItems</span>()</code></pre><h2 id="rules"><a class="anchor" href="#rules" aria-hidden="true">#</a>Rules</h2>
+<pre class="pc"><code><span class="t-rule-must">MUST</span>     allow at most one active run at a time      <span class="t-comment">// prompt, continue, and reset throw otherwise</span>
+<span class="t-rule-must">MUST</span>     give the <span class="t-keyword">loop</span> a copy of messages and tools, never the arrays in state
+<span class="t-rule-must">MUST</span>     add a message to state.<span class="t-symbol">messages</span> only on <span class="t-symbol">message_end</span>
+<span class="t-rule-must">MUST</span>     call listeners in subscribe order, and wait <span class="t-keyword">for</span> <span class="t-keyword">each</span> one before the next
+<span class="t-rule-must">MUST</span>     keep <span class="t-symbol">isStreaming</span> <span class="t-literal">true</span> until every <span class="t-symbol">agent_end</span> listener has finished
+<span class="t-rule-must">MUST</span>     turn an error thrown by the <span class="t-keyword">loop</span> into an assistant reply with <span class="t-symbol">stopReason</span> <span class="t-literal">&quot;error&quot;</span>
+         (or <span class="t-literal">&quot;aborted&quot;</span> <span class="t-keyword">if</span> the run's signal was aborted), and still <span class="t-keyword">emit</span> message, <span class="t-symbol">turn_end</span>, <span class="t-symbol">agent_end</span>
+<span class="t-rule-must">MUST</span>     deliver steering messages before follow-up messages
+<span class="t-rule-must">MUST</span>     drain one message per poll in <span class="t-literal">&quot;one-at-a-time&quot;</span> mode, and the whole queue in <span class="t-literal">&quot;all&quot;</span> mode
+<span class="t-rule-must">MUST NOT</span> clear the queues when a run ends, fails, or is aborted     <span class="t-comment">// only reset and clear*() do</span>
+<span class="t-rule-must">MUST NOT</span> <span class="t-keyword">continue</span> from an assistant message unless a queue has something to send
+<span class="t-rule-must">MUST</span>     keep the current system prompt and tools when <a class="t-symbol t-link" href="#reset" title="reset · agent">reset</a>() clears the conversation
+<span class="t-rule-should">SHOULD</span>   create a <span class="t-keyword">new</span> <span class="t-symbol">pendingToolCalls</span> set on every change, instead of changing the old one</code></pre><h2 id="examples"><a class="anchor" href="#examples" aria-hidden="true">#</a>Examples</h2>
+<div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent.test.ts#L709" title="packages/agent/test/agent.test.ts">agent.test.ts <span class="src-sep">›</span> “should throw when prompt() called while streaming”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a run started with <a class="t-symbol t-link" href="#prompt" title="prompt · agent">prompt</a>(<span class="t-literal">&quot;First message&quot;</span>) that is still streaming
+<span class="t-example">WHEN</span>  <a class="t-symbol t-link" href="#prompt" title="prompt · agent">prompt</a>(<span class="t-literal">&quot;Second message&quot;</span>) is called
+<span class="t-example">THEN</span>  it throws &quot;Agent is already processing a prompt. Use <span class="t-symbol">steer</span>() or <span class="t-symbol">followUp</span>() to queue
+      messages, or wait <span class="t-keyword">for</span> completion.&quot;</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent.test.ts#L1042" title="packages/agent/test/agent.test.ts">agent.test.ts <span class="src-sep">›</span> “keeps steering ahead of follow-up from a non-assistant continuation tail”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a conversation ending with the user message <span class="t-literal">&quot;existing&quot;</span>
+  <span class="t-example">AND</span> <span class="t-symbol">steer</span>(<span class="t-literal">&quot;steering&quot;</span>) and then <span class="t-symbol">followUp</span>(<span class="t-literal">&quot;follow-up&quot;</span>)
+<span class="t-example">WHEN</span>  <span class="t-keyword">continue</span>() is called
+<span class="t-example">THEN</span>  the model is called <span class="t-literal">2</span> times
+  <span class="t-example">AND</span> the first request has <span class="t-literal">&quot;steering&quot;</span> but not <span class="t-literal">&quot;follow-up&quot;</span>
+  <span class="t-example">AND</span> the second request has <span class="t-literal">&quot;follow-up&quot;</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent.test.ts#L826" title="packages/agent/test/agent.test.ts">agent.test.ts <span class="src-sep">›</span> “continue() keeps $mode steering semantics for assistant-tail fallback”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a conversation ending with an assistant reply
+  <span class="t-example">AND</span> <span class="t-symbol">steer</span>(<span class="t-literal">&quot;Steering 1&quot;</span>) and <span class="t-symbol">steer</span>(<span class="t-literal">&quot;Steering 2&quot;</span>)
+<span class="t-example">WHEN</span>  <span class="t-keyword">continue</span>() is called
+<span class="t-example">THEN</span>  in <span class="t-literal">&quot;one-at-a-time&quot;</span> mode, the model is called <span class="t-literal">2</span> times: <span class="t-literal">&quot;Steering 1&quot;</span> first, then <span class="t-literal">&quot;Steering 2&quot;</span>
+  <span class="t-example">AND</span> in <span class="t-literal">&quot;all&quot;</span> mode, the model is called once, with both messages</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent.test.ts#L1108" title="packages/agent/test/agent.test.ts">agent.test.ts <span class="src-sep">›</span> “keeps queues when finishTurn ends the run”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a follow-up message is queued
+  <span class="t-example">AND</span> a listener calls <span class="t-symbol">steer</span>(<span class="t-literal">&quot;steering&quot;</span>) when the model's reply ends
+  <span class="t-example">AND</span> <span class="t-symbol">finishTurn</span> answers <span class="t-literal">&quot;end&quot;</span>
+<span class="t-example">WHEN</span>  <a class="t-symbol t-link" href="#prompt" title="prompt · agent">prompt</a>(<span class="t-literal">&quot;start&quot;</span>) finishes
+<span class="t-example">THEN</span>  <a class="t-symbol t-link" href="#peekqueuedmessages" title="peekQueuedMessages · agent">peekQueuedMessages</a>() returns [<span class="t-literal">&quot;steering&quot;</span>]
+  <span class="t-example">AND</span> after <span class="t-symbol">clearSteeringQueue</span>(), it returns [<span class="t-literal">&quot;follow-up&quot;</span>]</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent.test.ts#L330" title="packages/agent/test/agent.test.ts">agent.test.ts <span class="src-sep">›</span> “emits full lifecycle events for thrown run failures”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a <span class="t-symbol">streamFn</span> that throws <span class="t-literal">&quot;provider exploded&quot;</span>
+<span class="t-example">WHEN</span>  <a class="t-symbol t-link" href="#prompt" title="prompt · agent">prompt</a>(<span class="t-literal">&quot;hello&quot;</span>) is called
+<span class="t-example">THEN</span>  the events are <span class="t-symbol">agent_start</span>, <span class="t-symbol">turn_start</span>, <span class="t-symbol">message_start</span>, <span class="t-symbol">message_end</span> (the prompt),
+      <span class="t-symbol">message_start</span>, <span class="t-symbol">message_end</span> (the made-up reply), <span class="t-symbol">turn_end</span>, <span class="t-symbol">agent_end</span>
+  <span class="t-example">AND</span> the last message has <span class="t-symbol">stopReason</span> <span class="t-literal">&quot;error&quot;</span> and <span class="t-symbol">errorMessage</span> <span class="t-literal">&quot;provider exploded&quot;</span>
+  <span class="t-example">AND</span> state.<span class="t-symbol">errorMessage</span> is <span class="t-literal">&quot;provider exploded&quot;</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent.test.ts#L361" title="packages/agent/test/agent.test.ts">agent.test.ts <span class="src-sep">›</span> “should await async subscribers before prompt resolves”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a listener that waits on a barrier when it gets <span class="t-symbol">agent_end</span>
+<span class="t-example">WHEN</span>  <a class="t-symbol t-link" href="#prompt" title="prompt · agent">prompt</a>(<span class="t-literal">&quot;hello&quot;</span>) is called and the model replies
+<span class="t-example">THEN</span>  prompt has not resolved and <span class="t-symbol">isStreaming</span> is still <span class="t-literal">true</span>
+  <span class="t-example">AND</span> once the barrier opens, prompt resolves and <span class="t-symbol">isStreaming</span> is <span class="t-literal">false</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent.test.ts#L434" title="packages/agent/test/agent.test.ts">agent.test.ts <span class="src-sep">›</span> “should pass the active abort signal to subscribers”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a listener that saves the signal it gets with <span class="t-symbol">agent_start</span>
+<span class="t-example">WHEN</span>  <a class="t-symbol t-link" href="#abort-and-waitforidle" title="abort and waitForIdle · agent">abort</a>() is called during the run
+<span class="t-example">THEN</span>  the saved signal is aborted</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/agent/test/agent.test.ts#L281" title="packages/agent/test/agent.test.ts">agent.test.ts <span class="src-sep">›</span> “restores the transcript baseline when reset”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> <span class="t-symbol">systemPrompt</span> <span class="t-literal">&quot;You are helpful.&quot;</span>, tool <span class="t-literal">&quot;echo&quot;</span>, and a user message <span class="t-literal">&quot;old&quot;</span>
+<span class="t-example">WHEN</span>  <a class="t-symbol t-link" href="#reset" title="reset · agent">reset</a>() is called
+<span class="t-example">THEN</span>  messages holds one system message with content <span class="t-literal">&quot;You are helpful.&quot;</span> and <span class="t-symbol">toolsAdded</span> [<span class="t-literal">&quot;echo&quot;</span>]</code></pre><h2 id="notes"><a class="anchor" href="#notes" aria-hidden="true">#</a>Notes</h2>
+<p>There are two copies of the conversation during a run. The loop works on its
+own copy, which <code>prepareNextTurn</code> can replace (for example after compaction).
+<code>state.messages</code> grows only from <code>message_end</code> events. A host that replaces the
+loop&#39;s conversation has to set <code>state.messages</code> itself. <code>AgentSession</code> in the
+coding agent does this whenever the session file changes, by assigning the
+session&#39;s projection to <code>agent.state.messages</code>.</p>
+<p><code>steer</code> and <code>followUp</code> only queue a message. When it reaches the model depends
+on the loop: steering goes in after the current turn&#39;s tools finish, and
+follow-ups go in when the loop would otherwise stop (see <a class="code-link" href="agent-loop.html#runloop"><code>runLoop</code></a> in
+<a href="agent-loop.html#runloop">agent-loop</a>). In the <code>pi</code> terminal app, Enter while the
+agent is working queues a steering message, Alt+Enter queues a follow-up, and
+Escape aborts.</p>
+<p>Aborting does not clear the queues. The coding agent clears them itself
+(<code>clearQueue</code>) when it wants queued text back in the editor.</p>
+<h2 id="source-map"><a class="anchor" href="#source-map" aria-hidden="true">#</a>Source map</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Pseudocode</th>
+<th>Real code</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a class="code-link" href="#prompt"><code>prompt</code></a></td>
+<td><a class="code-link" href="#prompt"><code>Agent.prompt</code></a>, <a class="code-link" href="#prompt"><code>Agent.normalizePromptInput</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#continue"><code>continue</code></a></td>
+<td><a class="code-link" href="#continue"><code>Agent.continue</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#runpromptmessages"><code>runPromptMessages</code></a></td>
+<td><a class="code-link" href="#runpromptmessages"><code>Agent.runPromptMessages</code></a>, <a class="code-link" href="#runpromptmessages"><code>Agent.runContinuation</code></a>, <a class="code-link" href="#runpromptmessages"><code>Agent.createContextSnapshot</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#runwithlifecycle"><code>runWithLifecycle</code></a></td>
+<td><a class="code-link" href="#runwithlifecycle"><code>Agent.runWithLifecycle</code></a>, <a class="code-link" href="#runwithlifecycle"><code>Agent.finishRun</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#handlerunfailure"><code>handleRunFailure</code></a>, <a class="code-link" href="#createloopconfig"><code>createLoopConfig</code></a>, <a class="code-link" href="#processevents"><code>processEvents</code></a>, <a class="code-link" href="#reset"><code>reset</code></a></td>
+<td>same names on <a class="code-link" href="#def-Agent"><code>Agent</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#def-PendingMessageQueue"><code>PendingMessageQueue</code></a></td>
+<td><a class="code-link" href="#def-PendingMessageQueue"><code>PendingMessageQueue</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><code>abort and waitForIdle</code></td>
+<td><a class="code-link" href="#abort-and-waitforidle"><code>Agent.abort</code></a>, <a class="code-link" href="#abort-and-waitforidle"><code>Agent.waitForIdle</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#createmutableagentstate"><code>createMutableAgentState</code></a></td>
+<td><a class="code-link" href="#createmutableagentstate"><code>createMutableAgentState</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#peekqueuedmessages"><code>peekQueuedMessages</code></a></td>
+<td><a class="code-link" href="#peekqueuedmessages"><code>Agent.peekQueuedMessages</code></a>, <a class="code-link" href="#peekqueuedmessages"><code>Agent.hasQueuedMessages</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>Agent.subscribe</code>, <code>Agent.steer</code>, <code>Agent.followUp</code>, the <code>clear*Queue</code> methods, mode getters and setters, <code>Agent.signal</code></td>
+<td>omitted: one-line wrappers, listed in Contracts</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td>the constructor, <code>defaultConvertToLlm</code>, <code>DEFAULT_MODEL</code>, <code>EMPTY_USAGE</code></td>
+<td>omitted: copying options and defaults</td>
+</tr>
+</tbody></table>
+</div>
+</main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(function () {
+  try {
+    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    window.mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "strict" });
+  } catch (e) {}
+  var rail = document.querySelector(".rail-inner");
+  if (rail && window.matchMedia("(max-width: 900px)").matches) rail.open = false;
+  document.querySelectorAll(".fold-tools button").forEach(function (b) {
+    var pre = b.parentElement.nextElementSibling;
+    b.addEventListener("click", function () {
+      var open = b.dataset.fold === "open";
+      pre.querySelectorAll("details.fold").forEach(function (d) { d.open = open; });
+      b.dataset.fold = open ? "close" : "open";
+      b.textContent = open ? "close all ▾" : "open all ▸";
+    });
+  });
+})();
+</script>
+</body>
+</html>

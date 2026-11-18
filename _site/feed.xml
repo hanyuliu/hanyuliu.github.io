@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-11-12T16:28:19-08:00</updated>
+  <updated>2026-11-17T23:08:13-08:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,32 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>Inside Pi: The Agent Wrapper</title>
+    <link href="http://localhost:4000/posts/inside-pi-the-agent-wrapper/" rel="alternate" type="text/html" title="Inside Pi: The Agent Wrapper" />
+    <published>2026-11-15T10:00:00-08:00</published>
+  
+    <updated>2026-11-15T10:00:00-08:00</updated>
+  
+    <id>http://localhost:4000/posts/inside-pi-the-agent-wrapper/</id>
+    <content type="text/html" src="http://localhost:4000/posts/inside-pi-the-agent-wrapper/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="AI" />
+    
+    <category term="Agents" />
+    
+  
+
+  <summary>The first post in this series was about the agent loop, and one thing I liked about it was that it keeps no state between runs. You hand it a conversation, it works, it returns. But a coding agent has to remember things: the conversation so far, the messages you typed while it was busy, and whether you pressed Escape.  In Pi, that memory lives in one class, Agent, in packages/agent/src/agent.ts...</summary>
+
+  </entry>
 
   
   <entry>
@@ -119,32 +145,6 @@
   
 
   <summary>On October 7, OpenAI released Intelligent UI in ChatGPT. Instead of always answering with text, ChatGPT can now answer with charts, buttons, forms, and small interactive tools.  It reminded me of something I’ve been playing with for a while: DeepSeek Harness, where the agent can build new UI as a plugin while it runs. In this post, I’ll share what I learned from the paper behind it, and walk th...</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>Temporal's Deep Agents Integration and Payload Limits</title>
-    <link href="http://localhost:4000/posts/temporal-deep-agent-payload-limits/" rel="alternate" type="text/html" title="Temporal&amp;apos;s Deep Agents Integration and Payload Limits" />
-    <published>2026-09-25T00:00:00-07:00</published>
-  
-    <updated>2026-09-25T00:00:00-07:00</updated>
-  
-    <id>http://localhost:4000/posts/temporal-deep-agent-payload-limits/</id>
-    <content type="text/html" src="http://localhost:4000/posts/temporal-deep-agent-payload-limits/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="AI" />
-    
-    <category term="Agents" />
-    
-  
-
-  <summary>Temporal is a durable execution framework. It recently added a developer-preview integration for LangChain Deep Agents — the package is temporalio.contrib.deepagents, and it still carries an “experimental, may change” warning. The idea is simple: take an existing Deep Agents program and make it durable — crash-safe, retryable, resumable — by adding one plugin. No changes to the agent code itsel...</summary>
 
   </entry>
 
