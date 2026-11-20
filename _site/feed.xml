@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-11-17T23:08:13-08:00</updated>
+  <updated>2026-11-19T17:58:06-08:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,32 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>Inside Pi: Tools</title>
+    <link href="http://localhost:4000/posts/inside-pi-tools/" rel="alternate" type="text/html" title="Inside Pi: Tools" />
+    <published>2026-11-17T10:00:00-08:00</published>
+  
+    <updated>2026-11-17T10:00:00-08:00</updated>
+  
+    <id>http://localhost:4000/posts/inside-pi-tools/</id>
+    <content type="text/html" src="http://localhost:4000/posts/inside-pi-tools/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="AI" />
+    
+    <category term="Agents" />
+    
+  
+
+  <summary>Tools are where a coding agent touches your machine. The model can only write text. It’s the tools that read your files, change them, and run your commands.  This is the fourth post in my series about how the Pi coding agent works inside. The first post showed how a tool call runs from the loop’s side: check the arguments, ask the hooks, run the tool, add the result. This post opens the tools t...</summary>
+
+  </entry>
 
   
   <entry>
@@ -119,32 +145,6 @@
   
 
   <summary>This is the second of two posts on A Programming Paradigm for Spatiotemporal Composability by Yifan Shi, Wei Zhang, and Tianyi Cui. The first post showed the agent in DeepSeek Harness building and removing its own UI, and gave the paper’s big ideas: revertible effects and reactive coeffects. This post goes into the details. I’ll cover the notation, the small calculus the paper builds, the theor...</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>DeepSeek Harness: Letting the Agent Build Its Own UI</title>
-    <link href="http://localhost:4000/posts/deepseek-harness-agent-built-ui/" rel="alternate" type="text/html" title="DeepSeek Harness: Letting the Agent Build Its Own UI" />
-    <published>2026-10-07T20:00:00-07:00</published>
-  
-    <updated>2026-10-07T20:00:00-07:00</updated>
-  
-    <id>http://localhost:4000/posts/deepseek-harness-agent-built-ui/</id>
-    <content type="text/html" src="http://localhost:4000/posts/deepseek-harness-agent-built-ui/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="Engineering" />
-    
-    <category term="Programming Languages" />
-    
-  
-
-  <summary>On October 7, OpenAI released Intelligent UI in ChatGPT. Instead of always answering with text, ChatGPT can now answer with charts, buttons, forms, and small interactive tools.  It reminded me of something I’ve been playing with for a while: DeepSeek Harness, where the agent can build new UI as a plugin while it runs. In this post, I’ll share what I learned from the paper behind it, and walk th...</summary>
 
   </entry>
 

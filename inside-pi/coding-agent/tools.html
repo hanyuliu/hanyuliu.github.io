@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>tools · Inside Pi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="layout">
+<aside class="rail">
+<details class="rail-inner" open>
+<summary><a class="brand" href="../index.html">Inside Pi</a>
+<span class="snapshot"><a href="https://github.com/earendil-works/pi/tree/195120a9156b79b0fab67d3a458b5315bed7a33f" target="_blank" rel="noopener">pi @ <code>195120a91</code></a></span></summary>
+<nav><ul class="nav-list"><li><a href="../index.html">Overview</a></li></ul><p class="nav-group">agent</p><ul class="nav-list"><li><a href="../agent/agent-loop.html">agent-loop</a></li><li><a href="../agent/agent.html">agent</a></li></ul><p class="nav-group">coding-agent</p><ul class="nav-list"><li><a href="tools.html" aria-current="page">tools</a><ul class="toc"><li class="toc-2"><a href="#contracts">Contracts</a></li><li class="toc-2"><a href="#behavior">Behavior</a></li><li class="toc-3"><a href="#read">read</a></li><li class="toc-3"><a href="#truncatehead">truncateHead</a></li><li class="toc-3"><a href="#truncatetail">truncateTail</a></li><li class="toc-3"><a href="#write">write</a></li><li class="toc-3"><a href="#withfilemutationqueue">withFileMutationQueue</a></li><li class="toc-3"><a href="#edit">edit</a></li><li class="toc-3"><a href="#applyeditstonormalizedcontent">applyEditsToNormalizedContent</a></li><li class="toc-3"><a href="#prepareeditarguments">prepareEditArguments</a></li><li class="toc-3"><a href="#bash">bash</a></li><li class="toc-3"><a href="#createlocalshelloperations">createLocalShellOperations</a></li><li class="toc-3"><a href="#outputaccumulator">OutputAccumulator</a></li><li class="toc-3"><a href="#nestedtoolcallrunnerexecute">NestedToolCallRunner.execute</a></li><li class="toc-2"><a href="#rules">Rules</a></li><li class="toc-2"><a href="#examples">Examples</a></li><li class="toc-2"><a href="#notes">Notes</a></li><li class="toc-2"><a href="#source-map">Source map</a></li></ul></li><li><a href="compaction.html">compaction</a></li></ul></nav>
+<div class="legend" aria-label="Color legend">
+<p class="nav-group">reading the code</p>
+<ul>
+<li><span class="t-symbol">blue</span> code name, search the code for it</li>
+<li><span class="t-symbol t-inline">italic</span> named for reading, not in the code; ▸ opens it</li>
+<li><span class="t-type">teal</span> type or class</li>
+<li><span class="t-module">orange</span> crosses into another module</li>
+<li><span class="t-keyword">bold</span> structure</li>
+<li>plain text is a summary</li>
+<li><span class="t-rule-must">MUST</span> <span class="t-rule-should">SHOULD</span> <span class="t-rule-may">MAY</span> rule strength</li>
+<li><span class="t-why"><span class="t-why-lbl">// why:</span></span> keep this behavior</li>
+</ul></div>
+</details>
+</aside>
+<main class="doc doc-module">
+<h1 id="module-tools"><a class="anchor" href="#module-tools" aria-hidden="true">#</a>Module: tools</h1>
+<blockquote>
+<p>The built-in tools of the coding agent: <a class="code-link" href="#read"><code>read</code></a>, <a class="code-link" href="#write"><code>write</code></a>, <a class="code-link" href="#edit"><code>edit</code></a>, and <a class="code-link" href="#bash"><code>bash</code></a>. They read and change files, run shell commands, cut long output down to a size the model can take, and keep two changes to the same file from running at once.</p>
+</blockquote>
+<p>The loop page shows how a tool call runs from the loop&#39;s side: check the
+arguments, ask <code>beforeToolCall</code>, call <a class="code-link" href="#read"><code>execute</code></a>, ask <code>afterToolCall</code>. This page
+is the other side: what happens inside <a class="code-link" href="#read"><code>execute</code></a>.</p>
+<p>Each tool is a factory that returns a <a class="code-link" href="#def-ToolDefinition"><code>ToolDefinition</code></a>. The factory takes the
+working directory and options, and the definition holds a name, a description
+written for the model, a JSON schema for the arguments, and <a class="code-link" href="#read"><code>execute</code></a>. The
+session wraps each definition into an <a class="code-link" href="../agent/agent-loop.html#def-AgentTool"><code>AgentTool</code></a> for the loop
+(<code>wrapToolDefinition</code>).</p>
+<p>Every tool does its file or process work through a small <code>*Operations</code> object
+(<code>ReadOperations</code>, <code>EditOperations</code>, and so on). The default one uses the local
+disk and a local shell. Swap it and the same tool works over SSH or in a
+container.</p>
+<p>Out of scope here: <code>grep</code>, <code>find</code>, <code>ls</code>, and <code>powershell</code> (same shape, less to
+say), and the <code>renderers/</code> folder that draws tool calls in the terminal.</p>
+<dl class="meta"><dt>module</dt><dd>tools</dd><dt>files</dt><dd><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/read.ts">packages/coding-agent/src/core/tools/read.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/write.ts">packages/coding-agent/src/core/tools/write.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/edit.ts">packages/coding-agent/src/core/tools/edit.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/edit-diff.ts">packages/coding-agent/src/core/tools/edit-diff.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/bash.ts">packages/coding-agent/src/core/tools/bash.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/output-accumulator.ts">packages/coding-agent/src/core/tools/output-accumulator.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/truncate.ts">packages/coding-agent/src/core/tools/truncate.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/file-mutation-queue.ts">packages/coding-agent/src/core/tools/file-mutation-queue.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/nested-tool-calls.ts">packages/coding-agent/src/core/nested-tool-calls.ts</a></span></dd><dt>depends</dt><dd><span class="meta-item"><a href="../agent/agent-loop.html">agent-loop</a></span></dd><dt>used-by</dt><dd><span class="meta-item">coding-agent<span class="meta-note"> (`AgentSession`)</span></span></dd></dl><h2 id="contracts"><a class="anchor" href="#contracts" aria-hidden="true">#</a>Contracts</h2>
+<p>A tool definition. Only the fields the pseudocode uses are shown.</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-ToolDefinition">ToolDefinition</span> = {
+    name: <span class="t-type">String</span>,                         <span class="t-comment">// &quot;read&quot;, &quot;write&quot;, &quot;edit&quot;, &quot;bash&quot;</span>
+    description: <span class="t-type">String</span>,                  <span class="t-comment">// shown to the model with the schema</span>
+    parameters: <span class="t-type">JsonSchema</span>,               <span class="t-comment">// the arguments the model must send</span>
+    <span class="t-symbol">promptSnippet</span>: <span class="t-type">String</span>?,               <span class="t-comment">// one line for the system prompt's tool list</span>
+    <span class="t-symbol">promptGuidelines</span>: <span class="t-type">String</span>[]?,          <span class="t-comment">// rules for the system prompt</span>
+    <span class="t-symbol">prepareArguments</span>: <span class="t-keyword">fn</span>(<span class="t-type">Any</span>) -&gt; <span class="t-type">Any</span> ?,   <span class="t-comment">// fix common mistakes before the schema check</span>
+    <span class="t-symbol">executionMode</span>: <span class="t-literal">&quot;sequential&quot;</span> | <span class="t-literal">&quot;parallel&quot;</span> ?,
+    execute: <span class="t-keyword">async</span> <span class="t-keyword">fn</span>(<span class="t-symbol">toolCallId</span>, params, signal?, <span class="t-symbol">onUpdate</span>?, ctx?) -&gt; <a class="t-type t-link" href="../agent/agent-loop.html#def-AgentToolResult" title="AgentToolResult · agent-loop">AgentToolResult</a>,
+    <span class="t-comment">// skipped: label, outputSchema, constrainedSampling, renderers</span>
+}</code></pre><p>The arguments of each built-in tool.</p>
+<pre class="pc"><code>read  { path: <span class="t-type">String</span>, offset: <span class="t-type">Int</span>?, limit: <span class="t-type">Int</span>? }     <span class="t-comment">// offset is 1-based</span>
+write { path: <span class="t-type">String</span>, content: <span class="t-type">String</span> }
+edit  { path: <span class="t-type">String</span>, edits: { <span class="t-symbol">oldText</span>: <span class="t-type">String</span>, <span class="t-symbol">newText</span>: <span class="t-type">String</span> }[] }
+bash  { command: <span class="t-type">String</span>, timeout: <span class="t-type">Int</span>? }               <span class="t-comment">// seconds; no timeout by default</span></code></pre><p>Limits and the result of a cut. Whichever limit is hit first wins.</p>
+<pre class="pc"><code><span class="t-symbol">DEFAULT_MAX_LINES</span> = <span class="t-literal">2000</span>
+<span class="t-symbol">DEFAULT_MAX_BYTES</span> = <span class="t-literal">50</span> * <span class="t-literal">1024</span>                         <span class="t-comment">// 50KB</span>
+
+<span class="t-keyword">type</span> <span class="t-type t-def" id="def-TruncationResult">TruncationResult</span> = {
+    content: <span class="t-type">String</span>,                                  <span class="t-comment">// what is kept</span>
+    truncated: <span class="t-type">Bool</span>,
+    <span class="t-symbol">truncatedBy</span>: <span class="t-literal">&quot;lines&quot;</span> | <span class="t-literal">&quot;bytes&quot;</span> | <span class="t-literal">null</span>,
+    <span class="t-symbol">totalLines</span>: <span class="t-type">Int</span>, <span class="t-symbol">outputLines</span>: <span class="t-type">Int</span>,
+    <span class="t-symbol">firstLineExceedsLimit</span>: <span class="t-type">Bool</span>,                      <span class="t-comment">// head cut only: line 1 alone is too big</span>
+    <span class="t-symbol">lastLinePartial</span>: <span class="t-type">Bool</span>,                            <span class="t-comment">// tail cut only: end of one huge line</span>
+    <span class="t-comment">// skipped: totalBytes, outputBytes, maxLines, maxBytes</span>
+}</code></pre><p>Which tools are on. By default a session gets <a class="code-link" href="#read"><code>read</code></a>, <a class="code-link" href="#bash"><code>bash</code></a>, <a class="code-link" href="#edit"><code>edit</code></a>, and
+<a class="code-link" href="#write"><code>write</code></a>. <code>grep</code>, <code>find</code>, <code>ls</code>, and <code>powershell</code> exist but must be turned on.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">createCodingTools</span>(cwd, options) -&gt; [read, bash, edit, write]
+<span class="t-keyword">fn</span> <span class="t-symbol">withFileMutationQueue</span>(<span class="t-symbol">filePath</span>, <span class="t-keyword">fn</span>) -&gt; <span class="t-type">Promise</span>     <span class="t-comment">// run fn alone for this file</span>
+<span class="t-keyword">fn</span> <span class="t-symbol">truncateHead</span>(content, options?) -&gt; <a class="t-type t-link" href="#def-TruncationResult" title="TruncationResult · tools">TruncationResult</a>
+<span class="t-keyword">fn</span> <span class="t-symbol">truncateTail</span>(content, options?) -&gt; <a class="t-type t-link" href="#def-TruncationResult" title="TruncationResult · tools">TruncationResult</a></code></pre><h2 id="behavior"><a class="anchor" href="#behavior" aria-hidden="true">#</a>Behavior</h2>
+<h3 id="read"><a class="anchor" href="#read" aria-hidden="true">#</a>read</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/read.ts" title="packages/coding-agent/src/core/tools/read.ts">read.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/read.ts#L102">createReadToolDefinition.execute</a> <span class="marker" title="Unnamed code inside the symbol above">anonymous</span></span></div><p>Reads a text file or an image. Text is cut from the head, and the note at the
+end tells the model which <code>offset</code> to use next.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> read.<span class="t-symbol">execute</span>(id, {path, offset, limit}, signal, <span class="t-symbol">_</span>, ctx)
+    <span class="t-symbol">absolutePath</span> = <span class="t-symbol">resolveReadPathAsync</span>(path, ctx.<span class="t-symbol">cwd</span>)
+        <span class="t-comment">// also tries macOS name variants, e.g. the narrow space in &quot;Screenshot 10.42 AM.png&quot;</span>
+    check the file is readable                         <span class="t-comment">// → </span><a class="t-ref" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/read.ts#L92">ops.access</a><span class="t-comment"></span>
+    <span class="t-keyword">if</span> the file is an image:                           <span class="t-comment">// by its bytes, not its extension</span>
+        <span class="t-keyword">return</span> [text note, image]                      <span class="t-comment">// resized to fit the model</span>
+            <span class="t-comment">// the note also says so if the model can't see images</span>
+    lines = the file as text, split on <span class="t-literal">&quot;\n&quot;</span>
+    start = offset - <span class="t-literal">1</span>, or <span class="t-literal">0</span>
+    <span class="t-keyword">if</span> start &gt;= number of lines:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Offset &lt;offset&gt; is beyond end of file (&lt;n&gt; lines total)&quot;</span>)
+    selected = lines from start, at most limit of them <span class="t-keyword">if</span> limit is set
+    cut = <a class="t-symbol t-link" href="#truncatehead" title="truncateHead · tools">truncateHead</a>(selected)
+    <span class="t-keyword">if</span> cut.<span class="t-symbol">firstLineExceedsLimit</span>:
+        <span class="t-keyword">return</span> &quot;[Line &lt;n&gt; is &lt;size&gt;, exceeds <span class="t-literal">50</span>.0<span class="t-symbol">KB</span> limit.
+                 <span class="t-type">Use</span> bash: sed -n <span class="t-literal">'&lt;n&gt;p'</span> &lt;path&gt; | head -c <span class="t-literal">51200</span>]&quot;
+    <span class="t-keyword">if</span> cut.<span class="t-symbol">truncated</span>:
+        <span class="t-keyword">return</span> cut.<span class="t-symbol">content</span> + <span class="t-literal">&quot;\n\n[Showing lines &lt;a&gt;-&lt;b&gt; of &lt;total&gt;. Use offset=&lt;b+1&gt; to continue.]&quot;</span>
+            <span class="t-comment">// when the byte limit was hit: &quot;of &lt;total&gt; (50.0KB limit)&quot;</span>
+    <span class="t-keyword">if</span> limit stopped before the end of the file:
+        <span class="t-keyword">return</span> selected + <span class="t-literal">&quot;\n\n[&lt;k&gt; more lines in file. Use offset=&lt;next&gt; to continue.]&quot;</span>
+    <span class="t-keyword">return</span> selected</code></pre><h3 id="truncatehead"><a class="anchor" href="#truncatehead" aria-hidden="true">#</a>truncateHead</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/truncate.ts" title="packages/coding-agent/src/core/tools/truncate.ts">truncate.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/truncate.ts#L78">truncateHead</a></span></div><p>Keeps the start. Used by <a class="code-link" href="#read"><code>read</code></a>, where the start of a file is what you want.
+It never returns half a line.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">truncateHead</span>(content, {<span class="t-symbol">maxLines</span> = <span class="t-literal">2000</span>, <span class="t-symbol">maxBytes</span> = 50<span class="t-symbol">KB</span>}) -&gt; <a class="t-type t-link" href="#def-TruncationResult" title="TruncationResult · tools">TruncationResult</a>
+    lines = content split on <span class="t-literal">&quot;\n&quot;</span> (a trailing newline does not count as a line)
+    <span class="t-keyword">if</span> lines.<span class="t-symbol">count</span> &lt;= <span class="t-symbol">maxLines</span> and <span class="t-symbol">bytes</span>(content) &lt;= <span class="t-symbol">maxBytes</span>:
+        <span class="t-keyword">return</span> content, truncated = <span class="t-literal">false</span>
+    <span class="t-keyword">if</span> <span class="t-symbol">bytes</span>(lines[<span class="t-literal">0</span>]) &gt; <span class="t-symbol">maxBytes</span>:
+        <span class="t-keyword">return</span> <span class="t-literal">&quot;&quot;</span>, <span class="t-symbol">firstLineExceedsLimit</span> = <span class="t-literal">true</span>
+    kept = []
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> line, from the first, <span class="t-keyword">while</span> kept.<span class="t-symbol">count</span> &lt; <span class="t-symbol">maxLines</span>:
+        <span class="t-keyword">if</span> <span class="t-symbol">bytes</span>(kept) + <span class="t-symbol">bytes</span>(line) + <span class="t-literal">1</span> &gt; <span class="t-symbol">maxBytes</span>:
+            <span class="t-symbol">truncatedBy</span> = <span class="t-literal">&quot;bytes&quot;</span>
+            <span class="t-keyword">break</span>
+        kept.<span class="t-symbol">add</span>(line)
+    <span class="t-keyword">return</span> kept joined by <span class="t-literal">&quot;\n&quot;</span>, truncated = <span class="t-literal">true</span>, <span class="t-symbol">truncatedBy</span> (<span class="t-literal">&quot;lines&quot;</span> <span class="t-keyword">if</span> it stopped on count)</code></pre><h3 id="truncatetail"><a class="anchor" href="#truncatetail" aria-hidden="true">#</a>truncateTail</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/truncate.ts" title="packages/coding-agent/src/core/tools/truncate.ts">truncate.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/truncate.ts#L168">truncateTail</a></span></div><p>Keeps the end. Used by <a class="code-link" href="#bash"><code>bash</code></a>, where errors and final results come last.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">truncateTail</span>(content, {<span class="t-symbol">maxLines</span> = <span class="t-literal">2000</span>, <span class="t-symbol">maxBytes</span> = 50<span class="t-symbol">KB</span>}) -&gt; <a class="t-type t-link" href="#def-TruncationResult" title="TruncationResult · tools">TruncationResult</a>
+    <span class="t-keyword">if</span> content fits both limits:
+        <span class="t-keyword">return</span> content, truncated = <span class="t-literal">false</span>
+    kept = []
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> line, from the last, <span class="t-keyword">while</span> kept.<span class="t-symbol">count</span> &lt; <span class="t-symbol">maxLines</span>:
+        <span class="t-keyword">if</span> <span class="t-symbol">bytes</span>(kept) + <span class="t-symbol">bytes</span>(line) + <span class="t-literal">1</span> &gt; <span class="t-symbol">maxBytes</span>:
+            <span class="t-keyword">if</span> kept is <span class="t-literal">empty</span>:
+                kept = [the last <span class="t-symbol">maxBytes</span> of this line]   <span class="t-comment">// cut on a UTF-8 character boundary</span>
+                <span class="t-symbol">lastLinePartial</span> = <span class="t-literal">true</span>
+            <span class="t-keyword">break</span>
+        put line at the front of kept
+    <span class="t-keyword">return</span> kept joined by <span class="t-literal">&quot;\n&quot;</span>, truncated = <span class="t-literal">true</span></code></pre><h3 id="write"><a class="anchor" href="#write" aria-hidden="true">#</a>write</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/write.ts" title="packages/coding-agent/src/core/tools/write.ts">write.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/write.ts#L58">createWriteToolDefinition.execute</a> <span class="marker" title="Unnamed code inside the symbol above">anonymous</span></span></div><p>Creates or replaces a whole file. Parent folders are created as needed.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> write.<span class="t-symbol">execute</span>(id, {path, content}, signal, <span class="t-symbol">_</span>, ctx)
+    <span class="t-symbol">absolutePath</span> = <span class="t-symbol">resolveToCwd</span>(path, ctx.<span class="t-symbol">cwd</span>)          <span class="t-comment">// also expands ~ and strips a leading @</span>
+    <span class="t-keyword">return</span> <a class="t-symbol t-link" href="#withfilemutationqueue" title="withFileMutationQueue · tools">withFileMutationQueue</a>(<span class="t-symbol">absolutePath</span>, <span class="t-keyword">fn</span>():
+        <span class="t-keyword">throw</span> <span class="t-keyword">if</span> aborted
+        create the parent folders                       <span class="t-comment">// → </span><a class="t-ref" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/write.ts#L48">ops.mkdir</a><span class="t-comment"></span>
+        <span class="t-keyword">throw</span> <span class="t-keyword">if</span> aborted
+        write content to the file                       <span class="t-comment">// → </span><a class="t-ref" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/write.ts#L48">ops.writeFile</a><span class="t-comment"></span>
+        <span class="t-keyword">throw</span> <span class="t-keyword">if</span> aborted
+        <span class="t-keyword">return</span> <span class="t-literal">&quot;Successfully wrote to &lt;path&gt;&quot;</span>)
+    <span class="t-why"><span class="t-why-lbl">// why:</span> check the signal after each step instead of rejecting from an abort listener.</span>
+    <span class="t-why">//      Rejecting early would free the queue while a write is still in flight.</span></code></pre><h3 id="withfilemutationqueue"><a class="anchor" href="#withfilemutationqueue" aria-hidden="true">#</a>withFileMutationQueue</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/file-mutation-queue.ts" title="packages/coding-agent/src/core/tools/file-mutation-queue.ts">file-mutation-queue.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/file-mutation-queue.ts#L32">withFileMutationQueue</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/file-mutation-queue.ts#L16">getMutationQueueKey</a></span></div><p>Tools run in parallel by default, so two <a class="code-link" href="#edit"><code>edit</code></a> calls on one file could both
+read the old content, and the second write would erase the first. This queue
+makes changes to the same file wait for each other. Changes to different files
+still run at the same time.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">withFileMutationQueue</span>(<span class="t-symbol">filePath</span>, <span class="t-keyword">fn</span>)
+    key = <span class="t-symbol">realpath</span>(<span class="t-symbol">filePath</span>), or the resolved path <span class="t-keyword">if</span> the file does not exist yet
+        <span class="t-why"><span class="t-why-lbl">// why:</span> a symlink and its target are one file, so they share one queue</span>
+    previous = <span class="t-symbol">fileMutationQueues</span>[key] or done
+    mine = a promise that resolves when <span class="t-keyword">fn</span> finishes
+    <span class="t-symbol">fileMutationQueues</span>[key] = previous, then mine
+        <span class="t-comment"><span class="t-note-lbl">// note:</span> registrations go through one global chain, so two calls can't both</span>
+        <span class="t-comment">//       read the old queue before either one adds itself</span>
+    <span class="t-keyword">await</span> previous
+    <span class="t-keyword">try</span>:
+        <span class="t-keyword">return</span> <span class="t-keyword">fn</span>()
+    <span class="t-keyword">finally</span>:
+        resolve mine                                    <span class="t-comment">// the next change to this file starts</span>
+        <span class="t-keyword">if</span> <span class="t-symbol">fileMutationQueues</span>[key] is still this chain: remove it</code></pre><h3 id="edit"><a class="anchor" href="#edit" aria-hidden="true">#</a>edit</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/edit.ts" title="packages/coding-agent/src/core/tools/edit.ts">edit.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/edit.ts#L159">createEditToolDefinition.execute</a> <span class="marker" title="Unnamed code inside the symbol above">anonymous</span> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/edit.ts#L136">validateEditInput</a></span></div><p>Changes a file by exact text replacement. There are no line numbers and no
+patches: the model sends the old text and the new text. The file keeps its line
+endings and byte-order mark.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> edit.<span class="t-symbol">execute</span>(id, input, signal, <span class="t-symbol">_</span>, ctx)
+    <span class="t-keyword">if</span> input.<span class="t-symbol">edits</span> is <span class="t-literal">empty</span>:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Edit tool input is invalid. edits must contain at least one replacement.&quot;</span>)
+    <span class="t-symbol">absolutePath</span> = <span class="t-symbol">resolveToCwd</span>(input.<span class="t-symbol">path</span>, ctx.<span class="t-symbol">cwd</span>)
+    <span class="t-keyword">return</span> <a class="t-symbol t-link" href="#withfilemutationqueue" title="withFileMutationQueue · tools">withFileMutationQueue</a>(<span class="t-symbol">absolutePath</span>, <span class="t-keyword">fn</span>():
+        <span class="t-keyword">if</span> the file can't be read and written:
+            <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Could not edit file: &lt;path&gt;. Error code: &lt;code&gt;.&quot;</span>)
+        raw = the file as text
+        bom, text = split off a <span class="t-symbol">UTF</span>-<span class="t-literal">8</span> byte-order mark
+            <span class="t-why"><span class="t-why-lbl">// why:</span> the model never types an invisible BOM</span>
+        ending = <span class="t-literal">&quot;\r\n&quot;</span> <span class="t-keyword">if</span> the first line ends that way, <span class="t-keyword">else</span> <span class="t-literal">&quot;\n&quot;</span>
+        text = text with every line ending as <span class="t-literal">&quot;\n&quot;</span>
+        before, after = <a class="t-symbol t-link" href="#applyeditstonormalizedcontent" title="applyEditsToNormalizedContent · tools">applyEditsToNormalizedContent</a>(text, input.<span class="t-symbol">edits</span>, path)
+        write bom + after with ending restored
+        <span class="t-keyword">return</span> <span class="t-literal">&quot;Successfully replaced &lt;n&gt; block(s) in &lt;path&gt;.&quot;</span>,
+               details: { diff, patch, <span class="t-symbol">firstChangedLine</span> }   <span class="t-comment">// for the terminal, not the model</span>
+    )</code></pre><h3 id="applyeditstonormalizedcontent"><a class="anchor" href="#applyeditstonormalizedcontent" aria-hidden="true">#</a>applyEditsToNormalizedContent</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/edit-diff.ts" title="packages/coding-agent/src/core/tools/edit-diff.ts">edit-diff.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/edit-diff.ts#L300">applyEditsToNormalizedContent</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/edit-diff.ts#L207">fuzzyFindText</a></span></div><p>Finds every <code>oldText</code> in the original file, checks them all, and only then
+replaces. One bad edit means no edit is written.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">applyEditsToNormalizedContent</span>(content, edits, path) -&gt; { <span class="t-symbol">baseContent</span>, <span class="t-symbol">newContent</span> }
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> edit: <span class="t-keyword">if</span> <span class="t-symbol">oldText</span> is <span class="t-literal">empty</span>: <span class="t-keyword">throw</span> <span class="t-literal">&quot;oldText must not be empty in &lt;path&gt;.&quot;</span>
+    <span class="t-symbol">usesFuzzy</span> = any <span class="t-symbol">oldText</span> is not found as-is, but is found after <span class="t-symbol">normalizeForFuzzyMatch</span>
+    base = <span class="t-symbol">normalizeForFuzzyMatch</span>(content) <span class="t-keyword">if</span> <span class="t-symbol">usesFuzzy</span> <span class="t-keyword">else</span> content
+    matches = []
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> edit, i:
+        find <span class="t-symbol">oldText</span> in base                            <span class="t-comment">// exact first, then normalized</span>
+        <span class="t-keyword">if</span> not found:
+            <span class="t-keyword">throw</span> &quot;Could not find edits[i] in &lt;path&gt;. The <span class="t-symbol">oldText</span> must <span class="t-keyword">match</span> exactly
+                   including all whitespace and newlines.&quot;
+        <span class="t-keyword">if</span> it occurs more than once:
+            <span class="t-keyword">throw</span> <span class="t-literal">&quot;Found &lt;k&gt; occurrences of edits[i] in &lt;path&gt;. Each oldText must be unique. ...&quot;</span>
+        matches.<span class="t-symbol">add</span>(i, where, length, <span class="t-symbol">newText</span>)
+    sort matches by position
+    <span class="t-keyword">if</span> two matches overlap:
+        <span class="t-keyword">throw</span> <span class="t-literal">&quot;edits[a] and edits[b] overlap in &lt;path&gt;. Merge them into one edit or ...&quot;</span>
+    <span class="t-keyword">if</span> <span class="t-symbol">usesFuzzy</span>:
+        <span class="t-symbol">newContent</span> = rewrite only the lines the matches touch; copy every other line
+                     from content unchanged    <span class="t-comment">// → </span><a class="t-ref" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/edit-diff.ts#L132">applyReplacementsPreservingUnchangedLines</a><span class="t-comment"></span>
+    <span class="t-keyword">else</span>:
+        <span class="t-symbol">newContent</span> = replace the matches, last one first <span class="t-why"><span class="t-why-lbl">// why:</span> earlier offsets stay valid</span>
+    <span class="t-keyword">if</span> <span class="t-symbol">newContent</span> == content:
+        <span class="t-keyword">throw</span> <span class="t-literal">&quot;No changes made to &lt;path&gt;. ...&quot;</span>
+    <span class="t-keyword">return</span> { <span class="t-symbol">baseContent</span>: content, <span class="t-symbol">newContent</span> }</code></pre><p><code>normalizeForFuzzyMatch</code> strips spaces at the end of each line, and turns
+smart quotes, Unicode dashes, and special spaces into their plain ASCII forms.
+The messages above are for a call with several edits. With one edit, they say
+&quot;the text&quot; instead of &quot;edits[i]&quot;.</p>
+<h3 id="prepareeditarguments"><a class="anchor" href="#prepareeditarguments" aria-hidden="true">#</a>prepareEditArguments</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/edit.ts" title="packages/coding-agent/src/core/tools/edit.ts">edit.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/edit.ts#L103">prepareEditArguments</a></span></div><p>Runs before the schema check and fixes two shapes that some models send.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">prepareEditArguments</span>(input) -&gt; <span class="t-type">EditToolInput</span>
+    <span class="t-keyword">if</span> input.<span class="t-symbol">edits</span> is a <span class="t-symbol">JSON</span> string:
+        input.<span class="t-symbol">edits</span> = the parsed array (or [the parsed object])
+        <span class="t-comment"><span class="t-note-lbl">// note:</span> from the code: &quot;Some models (Opus 4.6, GLM-5.1) send edits as a JSON string&quot;</span>
+    <span class="t-keyword">else</span> <span class="t-keyword">if</span> input.<span class="t-symbol">edits</span> is a single {<span class="t-symbol">oldText</span>, <span class="t-symbol">newText</span>} object:
+        input.<span class="t-symbol">edits</span> = [input.<span class="t-symbol">edits</span>]
+    <span class="t-keyword">if</span> input has top-level <span class="t-symbol">oldText</span> and <span class="t-symbol">newText</span>:         <span class="t-comment">// the older one-edit form</span>
+        move them into input.<span class="t-symbol">edits</span>
+    <span class="t-keyword">return</span> input</code></pre><h3 id="bash"><a class="anchor" href="#bash" aria-hidden="true">#</a>bash</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/bash.ts" title="packages/coding-agent/src/core/tools/bash.ts">bash.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/bash.ts#L261">createShellToolDefinition.execute</a> <span class="marker" title="Unnamed code inside the symbol above">anonymous</span></span></div><p>Runs a command and returns its combined stdout and stderr, cut from the tail.
+While it runs, the terminal gets the latest output at most every 100ms.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> bash.<span class="t-symbol">execute</span>(id, {command, timeout}, signal, <span class="t-symbol">onUpdate</span>, ctx)
+    command = <span class="t-symbol">commandPrefix</span> + <span class="t-literal">&quot;\n&quot;</span> + command, <span class="t-keyword">if</span> a prefix is set
+    env = the shell environment, plus <span class="t-symbol">PI_SESSION_ID</span>, <span class="t-symbol">PI_SESSION_FILE</span>, <span class="t-symbol">PI_PROVIDER</span>,
+          <span class="t-symbol">PI_MODEL</span>, <span class="t-symbol">PI_REASONING_LEVEL</span>       <span class="t-comment">// unless exposeSessionEnvironment is false</span>
+    apply <span class="t-symbol">spawnHook</span>?(command, cwd, env)                 <span class="t-comment">// an extension may change all three</span>
+    output = <span class="t-keyword">new</span> <a class="t-type t-link" href="#def-OutputAccumulator" title="OutputAccumulator · tools">OutputAccumulator</a>(<span class="t-symbol">tempFilePrefix</span> <span class="t-literal">&quot;pi-bash&quot;</span>)
+    <span class="t-keyword">try</span>:
+        <span class="t-symbol">exitCode</span> = ops.<span class="t-symbol">exec</span>(command, cwd, <span class="t-symbol">onData</span> = output.<span class="t-symbol">append</span>, signal, timeout, env)
+    <span class="t-keyword">catch</span> <span class="t-literal">&quot;aborted&quot;</span>:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(&lt;output so far&gt; + <span class="t-literal">&quot;\n\nCommand aborted&quot;</span>)
+    <span class="t-keyword">catch</span> <span class="t-literal">&quot;timeout:&lt;s&gt;&quot;</span>:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(&lt;output so far&gt; + <span class="t-literal">&quot;\n\nCommand timed out after &lt;s&gt; seconds&quot;</span>)
+    <span class="t-keyword">if</span> <span class="t-symbol">exitCode</span> is <span class="t-literal">null</span>:                                <span class="t-comment">// only from custom ops</span>
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(&lt;output&gt; + <span class="t-literal">&quot;\n\nCommand terminated without an exit code&quot;</span>)
+    snapshot = output.<span class="t-symbol">snapshot</span>()                        <span class="t-comment">// truncateTail of what it kept</span>
+    text = snapshot.<span class="t-symbol">content</span> or <span class="t-literal">&quot;(no output)&quot;</span>
+    <span class="t-keyword">if</span> snapshot was cut:
+        text += <span class="t-literal">&quot;\n\n[Showing lines &lt;a&gt;-&lt;b&gt; of &lt;total&gt;. Full output: &lt;temp file&gt;]&quot;</span>
+    <span class="t-keyword">if</span> <span class="t-symbol">exitCode</span> is not <span class="t-literal">0</span>:
+        <span class="t-keyword">return</span> text + <span class="t-literal">&quot;\n\nCommand exited with code &lt;exitCode&gt;&quot;</span>, <span class="t-symbol">isError</span> = <span class="t-literal">true</span>
+    <span class="t-keyword">return</span> text</code></pre><h3 id="createlocalshelloperations"><a class="anchor" href="#createlocalshelloperations" aria-hidden="true">#</a>createLocalShellOperations</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/bash.ts" title="packages/coding-agent/src/core/tools/bash.ts">bash.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/bash.ts#L97">createLocalShellOperations</a></span></div><p>The default <code>exec</code>: starts the shell and stops it on abort or timeout.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">exec</span>(command, cwd, {<span class="t-symbol">onData</span>, signal, timeout, env}) -&gt; { <span class="t-symbol">exitCode</span> }
+    <span class="t-keyword">if</span> cwd does not exist:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Working directory does not exist: &lt;cwd&gt;\nCannot execute bash commands.&quot;</span>)
+    child = <span class="t-keyword">spawn</span> the shell with command, in its own process group
+    send child's stdout and stderr to <span class="t-symbol">onData</span>
+    <span class="t-keyword">on</span> timeout or abort: <span class="t-symbol">killProcessTree</span>(child)    <span class="t-comment">// the shell and every process it started</span>
+    <span class="t-symbol">exitCode</span> = wait <span class="t-keyword">for</span> the child
+    <span class="t-keyword">if</span> aborted: <span class="t-keyword">throw</span> <span class="t-literal">&quot;aborted&quot;</span>
+    <span class="t-keyword">if</span> timed out: <span class="t-keyword">throw</span> <span class="t-literal">&quot;timeout:&lt;timeout&gt;&quot;</span>
+    <span class="t-keyword">return</span> <span class="t-symbol">exitCode</span>, or <span class="t-literal">128</span> + signal number <span class="t-keyword">if</span> a signal killed the shell</code></pre><h3 id="outputaccumulator"><a class="anchor" href="#outputaccumulator" aria-hidden="true">#</a>OutputAccumulator</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/output-accumulator.ts" title="packages/coding-agent/src/core/tools/output-accumulator.ts">output-accumulator.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/output-accumulator.ts#L64">OutputAccumulator.append</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/tools/output-accumulator.ts#L91">OutputAccumulator.snapshot</a></span></div><p>Collects command output with bounded memory. It keeps only the recent tail in
+memory. Once the output passes either limit, it also writes everything to a
+temp file, so the model can read the full output later.</p>
+<pre class="pc"><code><span class="t-keyword">class</span> <span class="t-type t-def" id="def-OutputAccumulator">OutputAccumulator</span>
+    <span class="t-keyword">fn</span> <span class="t-symbol">append</span>(chunk)
+        decode chunk as <span class="t-symbol">UTF</span>-<span class="t-literal">8</span>, keeping a character split across chunks <span class="t-keyword">for</span> the next one
+        add the text to tail
+        <span class="t-keyword">if</span> tail passes 200<span class="t-symbol">KB</span>: keep only its last 100<span class="t-symbol">KB</span>          <span class="t-comment">// memory stays bounded</span>
+        count lines and bytes
+        <span class="t-keyword">if</span> the output is over <span class="t-literal">2</span>,<span class="t-literal">000</span> lines or 50<span class="t-symbol">KB</span>:
+            open the temp file <span class="t-keyword">if</span> needed: $TMPDIR/pi-bash-&lt;random&gt;.<span class="t-symbol">log</span>, readable only by you
+            write the chunk to it (earlier chunks are copied in when the file opens)
+        <span class="t-keyword">else</span>:
+            keep the chunk in memory
+    <span class="t-keyword">fn</span> <span class="t-symbol">snapshot</span>() -&gt; { content, truncation, <span class="t-symbol">fullOutputPath</span> }
+        truncation = <a class="t-symbol t-link" href="#truncatetail" title="truncateTail · tools">truncateTail</a>(tail), with the totals of the whole output
+        <span class="t-keyword">return</span> truncation.<span class="t-symbol">content</span>, truncation, the temp file path <span class="t-keyword">if</span> there is one</code></pre><h3 id="nestedtoolcallrunnerexecute"><a class="anchor" href="#nestedtoolcallrunnerexecute" aria-hidden="true">#</a>NestedToolCallRunner.execute</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/nested-tool-calls.ts" title="packages/coding-agent/src/core/nested-tool-calls.ts">nested-tool-calls.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/nested-tool-calls.ts#L176">NestedToolCallRunner.execute</a></span></div><p>Some tools call other tools while they run, through <code>ctx.executeTool()</code>. The
+<code>codemode</code> tool does this for model-written scripts. The loop never sees these
+calls. The session runs each one through the loop&#39;s own tool pipeline, so
+<code>beforeToolCall</code> and <code>afterToolCall</code> still apply.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">execute</span>(<span class="t-symbol">callerId</span>, name, args, options) -&gt; <span class="t-type">AgentToolCallOutcome</span>
+    scope = scopes[<span class="t-symbol">callerId</span>], or a <span class="t-keyword">new</span> one with its own <span class="t-type">NestedCallRecorder</span>
+    <span class="t-symbol">toolCall</span> = { id: <span class="t-symbol">callerId</span> + <span class="t-literal">&quot;/&quot;</span> + scope.<span class="t-symbol">nextId</span>, name, arguments: args }
+        <span class="t-comment">// ids &quot;call_7/1&quot;, &quot;call_7/2&quot;, ... below the caller &quot;call_7&quot;</span>
+    record = scope.<span class="t-symbol">recorder</span>.<span class="t-symbol">start</span>(<span class="t-symbol">toolCall</span>)
+    <span class="t-keyword">emit</span> <span class="t-symbol">tool_execution_start</span>{..., <span class="t-symbol">parentToolCallId</span>: <span class="t-symbol">callerId</span>}
+    <span class="t-keyword">if</span> the agent runs tools sequentially, or the tool's <span class="t-symbol">executionMode</span> is <span class="t-literal">&quot;sequential&quot;</span>:
+        wait <span class="t-keyword">for</span> the earlier exclusive nested call to finish
+    outcome = host.<span class="t-symbol">runToolCall</span>(<span class="t-symbol">toolCall</span>, ...)    <span class="t-comment">// → </span><span class="t-ref">agentLoop.runToolCall</span><span class="t-comment">, with the session's hooks</span>
+    scope.<span class="t-symbol">recorder</span>.<span class="t-symbol">finish</span>(record, outcome.<span class="t-symbol">isError</span>, its text)
+    add outcome.<span class="t-symbol">result</span>.<span class="t-symbol">usage</span> to the recorder
+    <span class="t-keyword">emit</span> <span class="t-symbol">tool_execution_end</span>{..., <span class="t-symbol">parentToolCallId</span>: <span class="t-symbol">callerId</span>}
+    <span class="t-keyword">return</span> outcome                                      <span class="t-comment">// a failed tool is isError, never a throw</span></code></pre><p>When the caller&#39;s result message starts, the session takes the record
+(<code>takeRecord</code>) and stores it on that message as <code>nestedCalls</code>, and adds the
+nested usage to the message&#39;s <code>usage</code>. The record keeps at most 256 calls and
+32KB of arguments. Larger arguments are left out and the record is marked
+incomplete.</p>
+<h2 id="rules"><a class="anchor" href="#rules" aria-hidden="true">#</a>Rules</h2>
+<pre class="pc"><code><span class="t-rule-must">MUST</span>     cut text output at <span class="t-literal">2</span>,<span class="t-literal">000</span> lines or 50<span class="t-symbol">KB</span>, whichever comes first
+<span class="t-rule-must">MUST</span>     keep the start of a file (read) and the end of command output (bash)
+<span class="t-rule-must">MUST</span>     end a cut result with a note that tells the model how to get the rest
+<span class="t-rule-must">MUST NOT</span> <span class="t-keyword">return</span> half a line from read          <span class="t-comment">// a huge first line gets a sed hint instead</span>
+<span class="t-rule-must">MUST</span>     save the full bash output to a temp file once it passes either limit
+<span class="t-rule-must">MUST</span>     run write and edit on the same real file one at a time, in the order they were called
+<span class="t-rule-must">MUST</span>     let changes to different files run at the same time
+<span class="t-rule-must">MUST NOT</span> free a file's queue <span class="t-keyword">while</span> a write to it may still be in flight, even after an abort
+<span class="t-rule-must">MUST</span>     <span class="t-keyword">match</span> every edits[].<span class="t-symbol">oldText</span> against the original file, not after earlier edits
+<span class="t-rule-must">MUST</span>     reject an edit whose <span class="t-symbol">oldText</span> is <span class="t-literal">empty</span>, missing, not unique, or overlaps another
+<span class="t-rule-must">MUST NOT</span> write any part of an edit call when one of its edits fails
+<span class="t-rule-must">MUST</span>     keep the file's line endings and byte-order mark through an edit
+<span class="t-rule-should">SHOULD</span>   <span class="t-keyword">try</span> an exact <span class="t-keyword">match</span> before a normalized (fuzzy) <span class="t-keyword">match</span>
+<span class="t-rule-must">MUST</span>     report a non-zero exit code as an error result that still carries the output
+<span class="t-rule-must">MUST</span>     kill the whole process tree on abort or timeout
+<span class="t-rule-must">MUST</span>     run nested tool calls through <span class="t-symbol">beforeToolCall</span> and <span class="t-symbol">afterToolCall</span>
+<span class="t-rule-must">MUST</span>     run nested calls to sequential tools one at a time</code></pre><h2 id="examples"><a class="anchor" href="#examples" aria-hidden="true">#</a>Examples</h2>
+<div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/tools.test.ts#L101" title="packages/coding-agent/test/tools.test.ts">tools.test.ts <span class="src-sep">›</span> “should truncate files exceeding line limit”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a file with <span class="t-literal">2</span>,<span class="t-literal">500</span> lines <span class="t-literal">&quot;Line 1&quot;</span> ... <span class="t-literal">&quot;Line 2500&quot;</span>
+<span class="t-example">WHEN</span>  read is called with only the path
+<span class="t-example">THEN</span>  the output has <span class="t-literal">&quot;Line 1&quot;</span> to <span class="t-literal">&quot;Line 2000&quot;</span> and not <span class="t-literal">&quot;Line 2001&quot;</span>
+  <span class="t-example">AND</span> it ends with <span class="t-literal">&quot;[Showing lines 1-2000 of 2500. Use offset=2001 to continue.]&quot;</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/tools.test.ts#L834" title="packages/coding-agent/test/tools.test.ts">tools.test.ts <span class="src-sep">›</span> “should persist full output when truncation happens by line count only”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> the command <span class="t-literal">&quot;seq 3000&quot;</span>
+<span class="t-example">WHEN</span>  bash runs it
+<span class="t-example">THEN</span>  <span class="t-symbol">truncatedBy</span> is <span class="t-literal">&quot;lines&quot;</span> and the output ends with <span class="t-literal">&quot;[Showing lines ... Full output: &lt;path&gt;]&quot;</span>
+  <span class="t-example">AND</span> the file at &lt;path&gt; holds all <span class="t-literal">3</span>,<span class="t-literal">000</span> lines</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/tools.test.ts#L501" title="packages/coding-agent/test/tools.test.ts">tools.test.ts <span class="src-sep">›</span> “should report non-zero exit codes as error results with structured content”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> the command <span class="t-literal">&quot;echo out; exit 3&quot;</span>
+<span class="t-example">WHEN</span>  bash runs it
+<span class="t-example">THEN</span>  <span class="t-symbol">isError</span> is <span class="t-literal">true</span>
+  <span class="t-example">AND</span> the text is <span class="t-literal">&quot;out\n\n\nCommand exited with code 3&quot;</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/tools.test.ts#L383" title="packages/coding-agent/test/tools.test.ts">tools.test.ts <span class="src-sep">›</span> “should match edits against the original file, not incrementally”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a file <span class="t-literal">&quot;foo\nbar\nbaz\n&quot;</span>
+<span class="t-example">WHEN</span>  edit is called with <span class="t-literal">&quot;foo\n&quot;</span> -&gt; <span class="t-literal">&quot;foo bar\n&quot;</span> and <span class="t-literal">&quot;bar\n&quot;</span> -&gt; <span class="t-literal">&quot;BAR\n&quot;</span>
+<span class="t-example">THEN</span>  the file is <span class="t-literal">&quot;foo bar\nBAR\nbaz\n&quot;</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/tools.test.ts#L425" title="packages/coding-agent/test/tools.test.ts">tools.test.ts <span class="src-sep">›</span> “should not partially apply edits when one edit fails”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a file <span class="t-literal">&quot;alpha\nbeta\ngamma\n&quot;</span>
+<span class="t-example">WHEN</span>  edit is called with <span class="t-literal">&quot;alpha\n&quot;</span> -&gt; <span class="t-literal">&quot;ALPHA\n&quot;</span> and <span class="t-literal">&quot;missing\n&quot;</span> -&gt; <span class="t-literal">&quot;MISSING\n&quot;</span>
+<span class="t-example">THEN</span>  it fails with <span class="t-literal">&quot;Could not find ...&quot;</span>
+  <span class="t-example">AND</span> the file is unchanged</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/tools.test.ts#L1120" title="packages/coding-agent/test/tools.test.ts">tools.test.ts <span class="src-sep">›</span> “should match text with trailing whitespace stripped”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a file <span class="t-literal">&quot;line one   \nline two  \nline three\n&quot;</span> (spaces at the ends of lines)
+<span class="t-example">WHEN</span>  edit is called with <span class="t-literal">&quot;line one\nline two\n&quot;</span> -&gt; <span class="t-literal">&quot;replaced\n&quot;</span>
+<span class="t-example">THEN</span>  the file is <span class="t-literal">&quot;replaced\nline three\n&quot;</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/tools.test.ts#L1360" title="packages/coding-agent/test/tools.test.ts">tools.test.ts <span class="src-sep">›</span> “should preserve CRLF line endings after edit”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a file <span class="t-literal">&quot;first\r\nsecond\r\nthird\r\n&quot;</span>
+<span class="t-example">WHEN</span>  edit is called with <span class="t-literal">&quot;second\n&quot;</span> -&gt; <span class="t-literal">&quot;REPLACED\n&quot;</span>
+<span class="t-example">THEN</span>  the file is <span class="t-literal">&quot;first\r\nREPLACED\r\nthird\r\n&quot;</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/file-mutation-queue.test.ts#L102" title="packages/coding-agent/test/file-mutation-queue.test.ts">file-mutation-queue.test.ts <span class="src-sep">›</span> “preserves both parallel edits on the same file”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a file <span class="t-literal">&quot;alpha\nbeta\ngamma\n&quot;</span> and slow reads and writes (30ms each)
+<span class="t-example">WHEN</span>  two edits run at the same time: <span class="t-literal">&quot;alpha&quot;</span> -&gt; <span class="t-literal">&quot;ALPHA&quot;</span> and <span class="t-literal">&quot;beta&quot;</span> -&gt; <span class="t-literal">&quot;BETA&quot;</span>
+<span class="t-example">THEN</span>  the file is <span class="t-literal">&quot;ALPHA\nBETA\ngamma\n&quot;</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/file-mutation-queue.test.ts#L77" title="packages/coding-agent/test/file-mutation-queue.test.ts">file-mutation-queue.test.ts <span class="src-sep">›</span> “uses the same queue for symlink aliases”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> target.<span class="t-symbol">txt</span> and a symlink alias.<span class="t-symbol">txt</span> pointing to it
+<span class="t-example">WHEN</span>  a slow change to target.<span class="t-symbol">txt</span> and a change to alias.<span class="t-symbol">txt</span> start together
+<span class="t-example">THEN</span>  the alias change starts only after the target change ends</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/nested-tool-calls.test.ts#L164" title="packages/coding-agent/test/nested-tool-calls.test.ts">nested-tool-calls.test.ts <span class="src-sep">›</span> “serializes concurrent calls to sequential tools”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a tool <span class="t-literal">&quot;sequential&quot;</span> with <span class="t-symbol">executionMode</span> <span class="t-literal">&quot;sequential&quot;</span>, and a normal tool <span class="t-literal">&quot;parallel&quot;</span>
+<span class="t-example">WHEN</span>  three nested calls to each start at the same time
+<span class="t-example">THEN</span>  at most <span class="t-literal">1</span> <span class="t-literal">&quot;sequential&quot;</span> call runs at once, and all <span class="t-literal">3</span> <span class="t-literal">&quot;parallel&quot;</span> calls run together</code></pre><h2 id="notes"><a class="anchor" href="#notes" aria-hidden="true">#</a>Notes</h2>
+<p>Tool descriptions are written for the model, and they say what the code does:
+<a class="code-link" href="#read"><code>read</code></a>&#39;s description tells the model about the 2,000-line and 50KB limits and
+to &quot;continue with offset until complete&quot;. The <code>promptSnippet</code> and
+<code>promptGuidelines</code> fields go into the system prompt, for example
+<a class="code-link" href="#edit"><code>edit</code></a>&#39;s &quot;Keep edits[].oldText as small as possible while still being unique
+in the file.&quot;</p>
+<p>A tool throws to report a failure. The loop turns the throw into an error
+result, so the model reads the message and can try again. <a class="code-link" href="#bash"><code>bash</code></a> is the
+exception: a non-zero exit returns a normal result marked <code>isError</code>, so the
+output is kept with it.</p>
+<p><a class="code-link" href="#edit"><code>edit</code></a> builds a diff and a unified patch only after it writes. The terminal
+shows the diff. The model gets one line: &quot;Successfully replaced 1 block(s) in
+<path>.&quot;</p>
+<h2 id="source-map"><a class="anchor" href="#source-map" aria-hidden="true">#</a>Source map</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Pseudocode</th>
+<th>Real code</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a class="code-link" href="#read"><code>read</code></a></td>
+<td><a class="code-link" href="#read"><code>execute</code></a> in <code>createReadToolDefinition</code>, <code>resolveReadPathAsync</code></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#truncatehead"><code>truncateHead</code></a>, <a class="code-link" href="#truncatetail"><code>truncateTail</code></a></td>
+<td>same names</td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#write"><code>write</code></a></td>
+<td><a class="code-link" href="#read"><code>execute</code></a> in <code>createWriteToolDefinition</code></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#withfilemutationqueue"><code>withFileMutationQueue</code></a></td>
+<td><a class="code-link" href="#withfilemutationqueue"><code>withFileMutationQueue</code></a>, <a class="code-link" href="#withfilemutationqueue"><code>getMutationQueueKey</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#edit"><code>edit</code></a></td>
+<td><a class="code-link" href="#read"><code>execute</code></a> in <code>createEditToolDefinition</code>, <a class="code-link" href="#edit"><code>validateEditInput</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#applyeditstonormalizedcontent"><code>applyEditsToNormalizedContent</code></a></td>
+<td><a class="code-link" href="#applyeditstonormalizedcontent"><code>applyEditsToNormalizedContent</code></a>, <a class="code-link" href="#applyeditstonormalizedcontent"><code>fuzzyFindText</code></a>, <code>countOccurrences</code>, the <code>get*Error</code> helpers</td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#prepareeditarguments"><code>prepareEditArguments</code></a></td>
+<td><a class="code-link" href="#prepareeditarguments"><code>prepareEditArguments</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#bash"><code>bash</code></a></td>
+<td><a class="code-link" href="#read"><code>execute</code></a> in <code>createShellToolDefinition</code>, <code>resolveSpawnContext</code></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#createlocalshelloperations"><code>createLocalShellOperations</code></a></td>
+<td><a class="code-link" href="#createlocalshelloperations"><code>createLocalShellOperations</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#def-OutputAccumulator"><code>OutputAccumulator</code></a></td>
+<td><a class="code-link" href="#outputaccumulator"><code>OutputAccumulator.append</code></a>, <code>.snapshot</code>, <code>.finish</code>, <code>.trimTail</code></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#nestedtoolcallrunnerexecute"><code>NestedToolCallRunner.execute</code></a></td>
+<td><a class="code-link" href="#nestedtoolcallrunnerexecute"><code>NestedToolCallRunner.execute</code></a>, <code>NestedCallRecorder</code></td>
+<td>merged</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>applyReplacementsPreservingUnchangedLines</code>, <code>generateDiffString</code>, <code>generateUnifiedPatch</code></td>
+<td>omitted: line overlay after a fuzzy match, and the diff for the terminal</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>OutputAccumulator.readFullOutput</code>, <code>truncateMiddle</code></td>
+<td>omitted: the 1MB output that codemode scripts get</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>grep</code>, <code>find</code>, <code>ls</code>, <code>powershell</code>, <code>renderers/</code></td>
+<td>omitted: out of scope</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>wrapToolDefinition</code>, <code>createToolDefinition</code>, <code>createAllTools</code></td>
+<td>omitted: wrapping and lookup</td>
+</tr>
+</tbody></table>
+</div>
+</main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(function () {
+  try {
+    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    window.mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "strict" });
+  } catch (e) {}
+  var rail = document.querySelector(".rail-inner");
+  if (rail && window.matchMedia("(max-width: 900px)").matches) rail.open = false;
+  document.querySelectorAll(".fold-tools button").forEach(function (b) {
+    var pre = b.parentElement.nextElementSibling;
+    b.addEventListener("click", function () {
+      var open = b.dataset.fold === "open";
+      pre.querySelectorAll("details.fold").forEach(function (d) { d.open = open; });
+      b.dataset.fold = open ? "close" : "open";
+      b.textContent = open ? "close all ▾" : "open all ▸";
+    });
+  });
+})();
+</script>
+</body>
+</html>
