@@ -144,11 +144,57 @@ sequenceDiagram
 
 Pi has a test for exactly this case, with a slow disk to make the race likely. The file must end up as `ALPHA / BETA / gamma`.
 
-A few details make the queue reliable:
+### What the lock covers
+
+The lock has to cover more than the write. `edit` holds it for its whole read-modify-write: it checks that the file exists, reads it, applies the edits, and writes it back. That's why Edit B in the diagram reads `ALPHA beta gamma`. It can't even read the file until Edit A has written it. `write` holds the lock while it creates the parent folders and writes the file.
+
+### How the queue works
+
+The queue is one map for the whole Pi process, from a file's real path to a chain of promises. Each change to a file adds itself to the end of that file's chain, waits for the change before it, runs, and then lets the next one go:
+
+```
+withFileMutationQueue(path, fn):
+    key  = realpath(path)             // a file that doesn't exist yet: its resolved path
+    prev = queues[key], or "done" if there is none
+    queues[key] = prev, then my turn
+    await prev                        // wait for the change ahead of me
+    try:     run fn                   // my read, change, and write
+    finally: end my turn; if I was the last one, remove queues[key]
+```
+
+There's one subtle part. Finding the key needs `realpath()`, which is async. If two calls did that at the same moment, both could look in the map before either added itself. Both would find it empty, and both would run at once. The order could also flip, depending on which `realpath` returned first. So Pi runs this registration step one call at a time, through a second, global chain. As a result, a file's queue is in exactly the order in which the tools asked for it.
+
+### Which change goes first
+
+So what is "the order the tools asked"? For the calls in one reply, it's the order the model wrote them. The loop first checks every call one by one, in order. Then it starts them all at once with `Promise.all`, which starts them in array order. Nothing waits between a call starting and its tool reaching the queue. So the calls join each file's queue in reply order.
+
+Say one reply has four calls:
+
+```
+1. edit  login.ts     2. edit  login.ts     3. write login.ts     4. edit session.ts
+```
+
+Calls 1, 2, and 3 run one after another on `login.ts`. Call 4 runs at the same time as them, because it's a different file. Call 2 sees call 1's change. Call 3 replaces the whole file, so it wipes out both edits. That may not be what the model meant, but the result is the same every time. It's an order, not a race.
+
+The queue keeps changes apart. It doesn't make them agree. If call 1 changes text that call 2's `oldText` was looking for, call 2 fails with "Could not find edits[0]...". The model sees that error and can try again. Nothing is lost without a trace.
+
+A few more details make the queue reliable:
 
 - **One queue per real file.** The queue is keyed by the file's real path. A symlink and its target share one queue.
 - **Other files don't wait.** An edit to `login.ts` and an edit to `session.ts` still run at the same time.
-- **Abort doesn't break it.** If you press Escape during a write, the tool keeps the file locked until the write has really finished. Only then can the next change start. The code says why: releasing early "would release the mutation queue while an in-flight filesystem operation may still finish."
+- **A failure doesn't block the file.** The turn ends in a `finally`, so if an edit throws, the next change still runs.
+- **Abort doesn't break it.** If you press Escape during a write, the tool keeps the file locked until the write has really finished. Only then can the next change start. The tool doesn't reject from an abort listener. It checks the signal after each `await` instead. The code says why: releasing early "would release the mutation queue while an in-flight filesystem operation may still finish."
+
+### What the queue doesn't cover
+
+The queue only knows about Pi's own `write` and `edit`. These can still race with them:
+
+- **`bash`.** A `sed -i` or `echo ... > file` doesn't go through the queue.
+- **`read`.** Reads don't wait. A `read` in the same reply may see the file before or after an edit.
+- **Anything outside this Pi process.** Another Pi instance, your editor, or a formatter that runs on save.
+- **Hard links.** `realpath` follows symlinks, but two hard links to one file are two different paths. They get two queues.
+
+One more caveat. "Reply order" depends on nothing waiting before the tool reaches the queue. That's true for the built-in tools. An extension that wraps `edit` and does some async work first could change the order.
 
 ## Running a command
 
@@ -171,11 +217,128 @@ for (const path of ["tsconfig.json", "package.json", ".eslintrc.json"]) {
 }
 ```
 
-The script's three `read` calls are *nested* calls. They never enter the conversation. The model sees only what the script returns. That saves context, but it raises a question: do the safety checks still apply?
+The script's three `read` calls are *nested* calls. They never enter the conversation. The model sees only what the script returns. That saves context, but it raises two questions. Who runs the script? And can the script do anything it likes on your machine?
+
+### Who runs the script
+
+Pi runs it itself. It doesn't save the script to a file, and it doesn't start `node` or `python` to run it. The script arrives as a string in the `codemode` call's arguments, and Pi hands that string straight to a sandbox.
+
+The sandbox comes from Pi's `pi-codemode` package. It's built on QuickJS, a small JavaScript engine written in C. Pi uses a build of QuickJS compiled to WebAssembly (wasm), so the engine runs inside Pi's own Node or Bun process like any other wasm module. For each script, Pi does this:
+
+1. It starts a new worker thread. A worker thread is a second JavaScript thread inside the same process, with its own event loop.
+2. Inside that worker, it creates a fresh QuickJS VM. The VM is a separate wasm instance with its own memory.
+3. It loads a short setup script, the *prelude*, into the VM. The prelude builds `tools`, `text`, `console`, and the other helpers the script can use.
+4. It wraps the model's code in an `async` function and runs it. That's why `return` and top-level `await` work.
+5. When the script finishes, fails, times out, or you press Escape, Pi terminates the worker. The VM goes with it.
+
+Every run starts from nothing. A script can't leave a global variable or a patched built-in behind for the next one. The only thing that lasts between runs is `store(key, value)`. Pi saves it in the session file, not in the VM.
+
+Why a separate thread? QuickJS runs synchronously. If it ran on Pi's main thread, a script stuck in `while (true) {}` would freeze the whole terminal, including the Escape key. In a worker, the main thread stays free and can stop the worker at any time.
+
+### What the script can and can't do
+
+A normal JavaScript program in Node can read files, open sockets, and start processes. A `codemode` script can do none of that, and not because Pi checks each action. The VM simply has no way to do it. QuickJS on its own has no file system, no network, and no processes. Pi doesn't add any. So inside the script, these don't exist:
+
+- `require`, `import`, and modules
+- `fs`, `process`, and environment variables
+- `fetch` and any other network access
+- `setTimeout`, `setInterval`, and other timers
+- `WebAssembly`, so the script can't load its own engine
+
+`eval` and `Function` do work, but they only make more code inside the same VM, with the same limits.
+
+What the script does get is a short list of functions the prelude sets up:
+
+- `tools.<name>(args)` calls one of Pi's tools: `read`, `bash`, `edit`, and the rest. The only tool missing is `codemode` itself, so a script can't start another script.
+- `ALL_TOOLS` lists the tools with their descriptions.
+- `text(value)`, `image(...)`, and `console.log(...)` add to the output the model will see.
+- `store(key, value)` and `load(key)` keep small JSON values between runs.
+- `exit()` ends the script early.
+
+So the one way out of the sandbox is a tool call. That's the important design choice. The script decides *what* to do and in what order. Pi's tools do the actual work.
+
+### How a tool call crosses the boundary
+
+The VM and Pi share no objects. They only pass messages. When the script runs `await tools.read({ path: "package.json" })`, this happens:
+
+```mermaid
+sequenceDiagram
+    participant S as Script (QuickJS VM)
+    participant W as Worker thread
+    participant H as Pi main thread
+    participant T as read tool
+    S->>W: tools.read(args): args as JSON text
+    W->>H: message {type: "call", id, name: "read", args}
+    Note over S: the script waits on a promise
+    H->>H: ctx.executeTool("read", args)
+    H->>T: runToolCall: checks, hooks, execute
+    T-->>H: file contents
+    H->>W: message {type: "result", id, ok, payload}
+    W->>S: resolve the promise with the JSON result
+```
+
+A few details make this boundary tight:
+
+- **Everything crosses as JSON text.** Arguments go out as a JSON string and results come back as one. No function, object reference, or class from Pi ever enters the VM. The script gets plain data.
+- **The bridge is hidden.** The prelude gets a single `bridge` function from Pi. It keeps it in a closure and never puts it on a global, so the script can't call the bridge directly or forge messages.
+- **Built-ins are frozen.** Before the script runs, the prelude freezes every built-in object, like `Object`, `Array.prototype`, and `JSON`. Otherwise a script could patch `JSON.stringify` and change what the prelude reports back to Pi.
+- **Errors come back as errors.** If a tool fails, its promise rejects with an `Error` carrying the tool's message, so the script can `try`/`catch` it.
+
+### Limits on the script itself
+
+The sandbox also guards against a script that is buggy rather than sneaky:
+
+- **Memory.** The VM's heap is capped at 256 MiB. The worker shares Pi's process, so without a cap a runaway script could grow to the 4 GiB wasm limit and crash your session. Past the cap, allocations fail inside the script with `InternalError: out of memory`, and Pi keeps running.
+- **Deep recursion.** QuickJS has a stack guard, so infinite recursion throws a catchable `RangeError` instead of crashing the thread.
+- **Infinite loops.** Pi and the VM share a single 4-byte flag (a `SharedArrayBuffer`). To stop a script, Pi sets the flag, and QuickJS checks it while it runs code. A loop like `while (true) await null` is sneakier: each turn is a separate promise job that runs only a few instructions. So the VM also checks the flag every 50 promise jobs. After setting the flag, Pi terminates the worker.
+- **Time.** By default there's no deadline. The script runs until it finishes or you press Escape. The model can set one with a first line like `// @options: {"timeout_ms": 30000}`.
+- **Waiting forever.** The VM has no timers and no I/O. So if a script waits on a promise while no tool call is pending, nothing can ever wake it. The sandbox notices this and fails the script right away instead of hanging.
+- **Output.** A script can print at most 16M characters and 100,000 items, so a print loop can't fill Pi's memory. The model then sees at most about 10,000 tokens of it, unless the script asks for more with `max_output_tokens`.
+- **Stray engine output.** QuickJS sometimes writes diagnostics to stdout and stderr. Pi drops them, so they can't break the terminal UI.
+
+### What the sandbox doesn't protect
+
+The sandbox fences in the script, not the tools. When a script calls `tools.bash({ command: "rm -rf build" })`, that command runs exactly as if the model had asked for it directly, with your user's permissions. The sandbox makes sure the script can only act through tools. It doesn't make the tools safer.
+
+That's why the next point matters.
+
+### The safety checks still apply
 
 They do. Each nested call goes through the same pipeline as a call from the model, the loop's `runToolCall`. So `beforeToolCall`, where a plugin can block a dangerous command, sees nested calls too. A script can't get around a permission check by calling `bash` itself.
 
-Nested calls are still recorded. If the `codemode` call has the id `call_7`, its nested calls get the ids `call_7/1`, `call_7/2`, and `call_7/3`. In the terminal, they show up inside the `codemode` call's row as they run. When the `codemode` result is saved, it carries a short record of the nested calls (name, arguments, status, and time) and their total token usage. And if the agent is set to run tools one at a time, nested calls wait their turn too.
+Nested calls are still recorded. If the `codemode` call has the id `call_7`, its nested calls get the ids `call_7/1`, `call_7/2`, and `call_7/3`. In the terminal, they show up inside the `codemode` call's row as they run. When the `codemode` result is saved, it carries a short record of the nested calls (name, arguments, status, and time) and their total token usage.
+
+### How nested calls are queued
+
+A script can make many tool calls. How do they line up with each other, and with the other tool calls in the same reply?
+
+It starts inside the script. QuickJS runs one thing at a time, but `tools.read()` returns a promise. So the script decides how many calls are in flight:
+
+```js
+for (const p of paths) await tools.read({ path: p });            // one at a time
+await Promise.all(paths.map((p) => tools.read({ path: p })));    // all at once
+```
+
+Each call becomes a message to Pi's main thread. The VM can have several of them waiting at once.
+
+On Pi's side, nested calls never join the agent loop's queue. The loop doesn't even know about them. From its view, `codemode` is one tool call that's still running. Each nested call goes to `ctx.executeTool()`, then to `NestedToolCallRunner.execute`, which runs it through `runToolCall`. Whether it waits depends on the mode:
+
+- **Parallel, the default.** Nested calls don't wait for anything. They run alongside each other, and alongside the other tool calls in the reply that are still running.
+- **Sequential.** If the agent is set to run tools one at a time, or the call is to a tool marked `executionMode: "sequential"`, the call joins one first-in, first-out queue and waits for the exclusive call ahead of it. In sequential mode, the loop runs `codemode` by itself anyway, so the script's calls just take turns.
+
+There's a catch in the sequential case. A tool that holds the queue may make nested calls of its own. If those waited for the queue too, they'd wait for their own parent forever. So Pi marks the calls made inside a queue holder, and they skip the queue. No built-in tool is marked `sequential`. Only extensions use it.
+
+What about two changes to the same file, one from the script and one from the model? The file queue from earlier handles that. It's one map for the whole process, and every `write` and `edit` goes through it, however it was called. A nested edit joins the file's queue when the script actually makes the call. That's after the worker has started, which is always after the loop has started every call in the reply. So if a reply has a direct `edit` of `login.ts` and a `codemode` script that also edits it, the direct edit goes first.
+
+Here is who keeps what apart:
+
+| Conflict | What prevents it |
+|---|---|
+| Two changes to one file, direct or nested | The per-file queue, shared by the whole process |
+| Tools that must never overlap | Sequential mode: the loop runs direct calls one at a time, and nested calls wait in their own queue |
+| Everything else, such as reads and `bash` | Nothing. They run at the same time by design |
+
+So in parallel mode, a `bash` from a script and a `bash` from the model can run at the same moment, with nothing ordering them.
 
 ## Go deeper
 
