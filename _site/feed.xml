@@ -4,7 +4,7 @@
   <id>http://localhost:4000/</id>
   <title>Hanyu Liu</title>
   <subtitle>Explore new ideas and build apps</subtitle>
-  <updated>2026-11-20T18:01:35-08:00</updated>
+  <updated>2026-11-21T23:43:29-08:00</updated>
   <author>
     <name>Hanyu Liu</name>
     <uri>http://localhost:4000/</uri>
@@ -17,6 +17,32 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>Inside Pi: Sessions on Disk</title>
+    <link href="http://localhost:4000/posts/inside-pi-sessions-on-disk/" rel="alternate" type="text/html" title="Inside Pi: Sessions on Disk" />
+    <published>2026-11-21T10:00:00-08:00</published>
+  
+    <updated>2026-11-21T10:00:00-08:00</updated>
+  
+    <id>http://localhost:4000/posts/inside-pi-sessions-on-disk/</id>
+    <content type="text/html" src="http://localhost:4000/posts/inside-pi-sessions-on-disk/" />
+    <author>
+      <name>Hanyu Liu</name>
+    </author>
+
+  
+    
+    <category term="AI" />
+    
+    <category term="Agents" />
+    
+  
+
+  <summary>Close Pi in the middle of a task, run pi --continue the next day, and the conversation is still there. Go back three messages with /tree, try something else, and the first attempt is still there too. All of this lives in one plain text file per session.  This is the fifth post in my series about how the Pi coding agent works inside. The compaction post said that a compaction is “one entry” in t...</summary>
+
+  </entry>
 
   
   <entry>
@@ -119,32 +145,6 @@
   
 
   <summary>Pi is a small, hackable coding agent that runs in your terminal. You give it a task, it talks to an LLM, and the LLM uses tools like “read this file” or “run this command” until the task is done.  I’ve been reading Pi’s code, and this is the first post in a series about how it works inside. I’m starting with the agent loop, because everything else in Pi hangs off it. Once you see how small and ...</summary>
-
-  </entry>
-
-  
-  <entry>
-    <title>Spatiotemporal Composability: The Calculus, the Proofs, and Cordis</title>
-    <link href="http://localhost:4000/posts/spatiotemporal-composability-calculus/" rel="alternate" type="text/html" title="Spatiotemporal Composability: The Calculus, the Proofs, and Cordis" />
-    <published>2026-10-08T10:00:00-07:00</published>
-  
-    <updated>2026-10-08T10:00:00-07:00</updated>
-  
-    <id>http://localhost:4000/posts/spatiotemporal-composability-calculus/</id>
-    <content type="text/html" src="http://localhost:4000/posts/spatiotemporal-composability-calculus/" />
-    <author>
-      <name>Hanyu Liu</name>
-    </author>
-
-  
-    
-    <category term="Engineering" />
-    
-    <category term="Programming Languages" />
-    
-  
-
-  <summary>This is the second of two posts on A Programming Paradigm for Spatiotemporal Composability by Yifan Shi, Wei Zhang, and Tianyi Cui. The first post showed the agent in DeepSeek Harness building and removing its own UI, and gave the paper’s big ideas: revertible effects and reactive coeffects. This post goes into the details. I’ll cover the notation, the small calculus the paper builds, the theor...</summary>
 
   </entry>
 

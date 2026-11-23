@@ -15,7 +15,7 @@
 <details class="rail-inner" open>
 <summary><a class="brand" href="index.html">Inside Pi</a>
 <span class="snapshot"><a href="https://github.com/earendil-works/pi/tree/195120a9156b79b0fab67d3a458b5315bed7a33f" target="_blank" rel="noopener">pi @ <code>195120a91</code></a></span></summary>
-<nav><ul class="nav-list"><li><a href="index.html" aria-current="page">Overview</a><ul class="toc"><li class="toc-2"><a href="#modules">Modules</a></li><li class="toc-2"><a href="#code-map">Code map</a></li><li class="toc-2"><a href="#how-the-modules-connect">How the modules connect</a></li><li class="toc-2"><a href="#key-flows">Key flows</a></li><li class="toc-2"><a href="#glossary">Glossary</a></li><li class="toc-2"><a href="#reading-order">Reading order</a></li></ul></li></ul><p class="nav-group">agent</p><ul class="nav-list"><li><a href="agent/agent-loop.html">agent-loop</a></li><li><a href="agent/agent.html">agent</a></li></ul><p class="nav-group">coding-agent</p><ul class="nav-list"><li><a href="coding-agent/tools.html">tools</a></li><li><a href="coding-agent/compaction.html">compaction</a></li></ul></nav>
+<nav><ul class="nav-list"><li><a href="index.html" aria-current="page">Overview</a><ul class="toc"><li class="toc-2"><a href="#modules">Modules</a></li><li class="toc-2"><a href="#code-map">Code map</a></li><li class="toc-2"><a href="#how-the-modules-connect">How the modules connect</a></li><li class="toc-2"><a href="#key-flows">Key flows</a></li><li class="toc-2"><a href="#glossary">Glossary</a></li><li class="toc-2"><a href="#reading-order">Reading order</a></li></ul></li></ul><p class="nav-group">agent</p><ul class="nav-list"><li><a href="agent/agent-loop.html">agent-loop</a></li><li><a href="agent/agent.html">agent</a></li></ul><p class="nav-group">coding-agent</p><ul class="nav-list"><li><a href="coding-agent/tools.html">tools</a></li><li><a href="coding-agent/session-manager.html">session-manager</a></li><li><a href="coding-agent/compaction.html">compaction</a></li></ul></nav>
 <div class="legend" aria-label="Color legend">
 <p class="nav-group">reading the code</p>
 <ul>
@@ -42,6 +42,7 @@ when you want to read or change the code. The posts so far:</p>
 <li><a href="/posts/inside-pi-context-compaction/">Inside Pi: Context Compaction</a></li>
 <li><a href="/posts/inside-pi-the-agent-wrapper/">Inside Pi: The Agent Wrapper</a></li>
 <li><a href="/posts/inside-pi-tools/">Inside Pi: Tools</a></li>
+<li><a href="/posts/inside-pi-sessions-on-disk/">Inside Pi: Sessions on Disk</a></li>
 </ol>
 <h2 id="modules"><a class="anchor" href="#modules" aria-hidden="true">#</a>Modules</h2>
 <div class="table-wrap"><table>
@@ -68,13 +69,18 @@ when you want to read or change the code. The posts so far:</p>
 <td><a href="coding-agent/tools.html">tools</a></td>
 </tr>
 <tr>
+<td>session-manager</td>
+<td>Save each session as a JSONL file whose entries form a tree, and rebuild the model&#39;s conversation from one branch of it</td>
+<td><a href="coding-agent/session-manager.html">session-manager</a></td>
+</tr>
+<tr>
 <td>compaction</td>
 <td>Replace old messages with a model-written summary when the context gets too big; also summarize a branch you leave</td>
 <td><a href="coding-agent/compaction.html">compaction</a></td>
 </tr>
 <tr>
 <td>Everything else</td>
-<td>Sessions, providers, the terminal UI</td>
+<td>Providers, the terminal UI</td>
 <td>coming with later posts</td>
 </tr>
 </tbody></table>
@@ -89,7 +95,7 @@ when you want to read or change the code. The posts so far:</p>
     src/core/agent-session.ts   drives the loop; decides when to compact   <span class="t-comment">→</span> <a class="t-ref" href="coding-agent/compaction.html">coding-agent/compaction.md</a>
     src/core/compaction/        plan, summarize, branch summaries (4 files) <span class="t-comment">→</span> <a class="t-ref" href="coding-agent/compaction.html">coding-agent/compaction.md</a>
     src/core/tools/             read, write, edit, bash, and more (24 files) <span class="t-comment">→</span> <a class="t-ref" href="coding-agent/tools.html">coding-agent/tools.md</a>
-    src/core/session-manager.ts the session file and its projection: next time
+    src/core/session-manager.ts the session file and its projection    <span class="t-comment">→</span> <a class="t-ref" href="coding-agent/session-manager.html">coding-agent/session-manager.md</a>
   tui/, chord/, codemode/, durable/, env/, mcp/, telemetry/, evals/   not covered here</code></pre><h2 id="how-the-modules-connect"><a class="anchor" href="#how-the-modules-connect" aria-hidden="true">#</a>How the modules connect</h2>
 <p>The loop sits in the middle. It keeps no state, so the <a class="code-link" href="agent/agent.html#def-Agent"><code>Agent</code></a> class wraps it:
 <a class="code-link" href="agent/agent.html#def-Agent"><code>Agent</code></a> holds the conversation and the message queues, and starts one loop run
@@ -100,13 +106,19 @@ never imports the coding agent, which is why it&#39;s easy to reuse.</p>
 context size at fixed points, including the loop&#39;s <code>prepareNextTurn</code> hook, and
 asks the compaction module for a summary. The summary is saved in the session
 file, and the next request is rebuilt from it.</p>
+<p>Every saved thing goes through the session manager: <code>AgentSession</code> appends an
+entry when a message ends, and compaction and <code>/tree</code> append theirs. Before
+each request, <code>AgentSession</code> asks the session manager for the projection of the
+active branch, and that becomes the conversation the <a class="code-link" href="agent/agent.html#def-Agent"><code>Agent</code></a> sends.</p>
 <pre class="mermaid">graph TD
     codingAgent[coding-agent: AgentSession] --&gt; agent[agent: class Agent]
     agent --&gt; agentLoop[agent-loop]
     agentLoop -. &quot;events, queue polls&quot; .-&gt; agent
     agentLoop -. &quot;prepareNextTurn hook&quot; .-&gt; codingAgent
     codingAgent --&gt; compaction
-    compaction --&gt; sessions[session file]
+    codingAgent --&gt; sessionManager[session-manager]
+    compaction --&gt; sessionManager
+    sessionManager --&gt; sessions[session file]
     compaction -. &quot;summary request&quot; .-&gt; ai
     agentLoop -. &quot;streamFn&quot; .-&gt; ai[pi-ai: about 40 LLM providers]
     agentLoop -. &quot;tool.execute&quot; .-&gt; tools[tools: read, bash, edit, write]
@@ -120,6 +132,10 @@ working, from the moment you press Enter until the model sees it. See
 <p>The tools post follows an <a class="code-link" href="coding-agent/tools.html#edit"><code>edit</code></a> call from the model&#39;s JSON to the file on
 disk, and shows what happens when two edits to one file run at the same time.
 See <a href="/posts/inside-pi-tools/">Inside Pi: Tools</a>.</p>
+<p>The sessions post follows one session on disk: the lines written as you chat,
+what happens to the file when you go back with <code>/tree</code>, <code>/fork</code>, and <code>/clone</code>,
+and how Pi turns the tree back into a conversation. See
+<a href="/posts/inside-pi-sessions-on-disk/">Inside Pi: Sessions on Disk</a>.</p>
 <p>The compaction post shows when Pi compacts during a run, and what the session
 file looks like before and after. See
 <a href="/posts/inside-pi-context-compaction/">Inside Pi: Context Compaction</a>.</p>
@@ -217,7 +233,27 @@ file looks like before and after. See
 </tr>
 <tr>
 <td><code>sessionManager.</code></td>
-<td>Prefix for session-file functions in <code>packages/coding-agent/src/core/session-manager.ts</code> (no page yet)</td>
+<td>Prefix for session-file functions in <code>packages/coding-agent/src/core/session-manager.ts</code>; see <a href="coding-agent/session-manager.html">session-manager</a></td>
+</tr>
+<tr>
+<td>Session file</td>
+<td><code>~/.pi/agent/sessions/--<cwd>--/<timestamp>_<id>.jsonl</code>: a header line, then one entry per line. Pi only appends to it (an old-version file is rewritten once, to migrate it)</td>
+</tr>
+<tr>
+<td>Leaf</td>
+<td>The entry a session is at right now. A new entry becomes a child of the leaf, then the new leaf</td>
+</tr>
+<tr>
+<td>Active branch</td>
+<td>The entries from the root to the leaf. Only these reach the model</td>
+</tr>
+<tr>
+<td>Context edit</td>
+<td>A <code>context_edit</code> entry that hides or replaces what one earlier entry adds to the context, without changing that entry</td>
+</tr>
+<tr>
+<td>Fork, clone</td>
+<td>A new session file with one path of the old tree. <code>/fork</code> stops just before a message you pick; <code>/clone</code> copies up to the leaf. Both record the old file as <code>parentSession</code></td>
 </tr>
 <tr>
 <td>Truncation</td>
@@ -245,6 +281,7 @@ file looks like before and after. See
 <li><a href="agent/agent-loop.html">agent-loop</a>. Start with <a class="code-link" href="agent/agent-loop.html#runloop"><code>runLoop</code></a>, then follow whichever helper catches your eye. The Rules and Examples at the end are a quick way to see what the loop promises.</li>
 <li><a href="agent/agent.html">agent</a>. Start with <a class="code-link" href="agent/agent.html#createloopconfig"><code>createLoopConfig</code></a>, which shows how the queues reach the loop, then <a class="code-link" href="agent/agent.html#processevents"><code>processEvents</code></a> for how the state is kept.</li>
 <li><a href="coding-agent/tools.html">tools</a>. Start with <a class="code-link" href="coding-agent/tools.html#read"><code>read</code></a> and <a class="code-link" href="coding-agent/tools.html#truncatehead"><code>truncateHead</code></a>, then <a class="code-link" href="coding-agent/tools.html#withfilemutationqueue"><code>withFileMutationQueue</code></a> and <a class="code-link" href="coding-agent/tools.html#edit"><code>edit</code></a>.</li>
+<li><a href="coding-agent/session-manager.html">session-manager</a>. Start with <a class="code-link" href="coding-agent/session-manager.html#persist"><code>_persist</code></a> for how the file is written, then <a class="code-link" href="coding-agent/session-manager.html#buildsessionprojection"><code>buildSessionProjection</code></a> and <code>buildContextEntries</code> for how it&#39;s read back. <a class="code-link" href="coding-agent/session-manager.html#createbranchedsession"><code>createBranchedSession</code></a> shows how a fork is cut out of the tree.</li>
 <li><a href="coding-agent/compaction.html">compaction</a>. Start with &quot;When compaction runs&quot;, then <a class="code-link" href="coding-agent/compaction.html#preparecompaction"><code>prepareCompaction</code></a> and <a class="code-link" href="coding-agent/compaction.html#findprojectedcutpoint"><code>findProjectedCutPoint</code></a> for where Pi cuts. Branch summaries are at the end.</li>
 </ol>
 

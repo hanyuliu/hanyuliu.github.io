@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>session-manager · Inside Pi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="layout">
+<aside class="rail">
+<details class="rail-inner" open>
+<summary><a class="brand" href="../index.html">Inside Pi</a>
+<span class="snapshot"><a href="https://github.com/earendil-works/pi/tree/195120a9156b79b0fab67d3a458b5315bed7a33f" target="_blank" rel="noopener">pi @ <code>195120a91</code></a></span></summary>
+<nav><ul class="nav-list"><li><a href="../index.html">Overview</a></li></ul><p class="nav-group">agent</p><ul class="nav-list"><li><a href="../agent/agent-loop.html">agent-loop</a></li><li><a href="../agent/agent.html">agent</a></li></ul><p class="nav-group">coding-agent</p><ul class="nav-list"><li><a href="tools.html">tools</a></li><li><a href="session-manager.html" aria-current="page">session-manager</a><ul class="toc"><li class="toc-2"><a href="#contracts">Contracts</a></li><li class="toc-2"><a href="#behavior">Behavior</a></li><li class="toc-3"><a href="#saving-a-message">Saving a message</a></li><li class="toc-3"><a href="#appendmessage">appendMessage</a></li><li class="toc-3"><a href="#appendentry">_appendEntry</a></li><li class="toc-3"><a href="#persist">_persist</a></li><li class="toc-3"><a href="#newsession">newSession</a></li><li class="toc-3"><a href="#getdefaultsessiondir">getDefaultSessionDir</a></li><li class="toc-3"><a href="#open">open</a></li><li class="toc-3"><a href="#loadentriesfromfile">loadEntriesFromFile</a></li><li class="toc-3"><a href="#loadentries">_loadEntries</a></li><li class="toc-3"><a href="#buildindex">_buildIndex</a></li><li class="toc-3"><a href="#getbranch">getBranch</a></li><li class="toc-3"><a href="#branch-resetleaf-branchwithsummary">branch, resetLeaf, branchWithSummary</a></li><li class="toc-3"><a href="#gettree">getTree</a></li><li class="toc-3"><a href="#buildsessionprojection">buildSessionProjection</a></li><li class="toc-3"><a href="#buildcontextentries">buildContextEntries</a></li><li class="toc-3"><a href="#sessionentrytocontextmessages">sessionEntryToContextMessages</a></li><li class="toc-3"><a href="#getsessioncontextsettings">getSessionContextSettings</a></li><li class="toc-3"><a href="#appendcontextedit">appendContextEdit</a></li><li class="toc-3"><a href="#appendcompaction">appendCompaction</a></li><li class="toc-3"><a href="#createbranchedsession">createBranchedSession</a></li><li class="toc-3"><a href="#agentsessionruntimefork">AgentSessionRuntime.fork</a></li><li class="toc-3"><a href="#forkfrom">forkFrom</a></li><li class="toc-3"><a href="#continuerecent">continueRecent</a></li><li class="toc-2"><a href="#rules">Rules</a></li><li class="toc-2"><a href="#examples">Examples</a></li><li class="toc-2"><a href="#notes">Notes</a></li><li class="toc-2"><a href="#source-map">Source map</a></li></ul></li><li><a href="compaction.html">compaction</a></li></ul></nav>
+<div class="legend" aria-label="Color legend">
+<p class="nav-group">reading the code</p>
+<ul>
+<li><span class="t-symbol">blue</span> code name, search the code for it</li>
+<li><span class="t-symbol t-inline">italic</span> named for reading, not in the code; ▸ opens it</li>
+<li><span class="t-type">teal</span> type or class</li>
+<li><span class="t-module">orange</span> crosses into another module</li>
+<li><span class="t-keyword">bold</span> structure</li>
+<li>plain text is a summary</li>
+<li><span class="t-rule-must">MUST</span> <span class="t-rule-should">SHOULD</span> <span class="t-rule-may">MAY</span> rule strength</li>
+<li><span class="t-why"><span class="t-why-lbl">// why:</span></span> keep this behavior</li>
+</ul></div>
+</details>
+</aside>
+<main class="doc doc-module">
+<h1 id="module-session-manager"><a class="anchor" href="#module-session-manager" aria-hidden="true">#</a>Module: session-manager</h1>
+<blockquote>
+<p>Saves each session as a JSONL file whose entries form a tree, and rebuilds the conversation the model sees from one branch of that tree.</p>
+</blockquote>
+<p>Every message, tool result, model change, compaction, and summary becomes one
+<em>entry</em>: one JSON object on one line of the session file. Each entry has an
+<code>id</code> and a <code>parentId</code>, so the entries form a tree. The <em>leaf</em> is the entry the
+session is at right now. A new entry is always a child of the leaf, and then
+becomes the new leaf. Going back to an earlier point only moves the leaf, so
+the next entry starts a new branch and the old branch stays in the file.</p>
+<p>The file only grows. Pi never changes or deletes a line it wrote. To change
+what the model sees, it adds an entry instead: a compaction, a branch summary,
+or a context edit. Before every request, the <em>projection</em> walks the active
+branch from the root to the leaf and turns its entries into messages.</p>
+<p>This page also covers the two places outside <code>session-manager.ts</code> that matter
+most for the file: where <code>AgentSession</code> saves each message, and how <code>/fork</code>
+and <code>/clone</code> start a new file from part of an old one.</p>
+<p>Out of scope here: the session picker (<code>list</code>, <code>listAll</code>, <code>buildSessionInfo</code>),
+export and share, and what goes into the system message (a later post).</p>
+<dl class="meta"><dt>module</dt><dd>session-manager</dd><dt>files</dt><dd><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts">packages/coding-agent/src/core/session-manager.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts">packages/coding-agent/src/core/agent-session.ts</a></span><span class="meta-item"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session-runtime.ts">packages/coding-agent/src/core/agent-session-runtime.ts</a></span></dd><dt>depends</dt><dd><span class="meta-item"><a href="../agent/agent-loop.html">agent-loop</a><span class="meta-note"> (message types)</span></span></dd><dt>used-by</dt><dd><span class="meta-item">coding-agent<span class="meta-note"> (`AgentSession`, `AgentSessionRuntime`)</span></span><span class="meta-item"><a href="compaction.html">compaction</a></span><span class="meta-item">extensions</span></dd></dl><h2 id="contracts"><a class="anchor" href="#contracts" aria-hidden="true">#</a>Contracts</h2>
+<p>The first line of every file is a header. It is not part of the tree.</p>
+<pre class="pc"><code><span class="t-symbol">CURRENT_SESSION_VERSION</span> = <span class="t-literal">3</span>
+
+<span class="t-keyword">type</span> <span class="t-type t-def" id="def-SessionHeader">SessionHeader</span> = {
+    <span class="t-keyword">type</span>: <span class="t-literal">&quot;session&quot;</span>,
+    version: <span class="t-type">Int</span>?,                  <span class="t-comment">// missing in version 1 files</span>
+    id: <span class="t-type">String</span>,                     <span class="t-comment">// a UUIDv7 by default, or --session-id</span>
+    timestamp: <span class="t-type">String</span>,              <span class="t-comment">// ISO 8601</span>
+    cwd: <span class="t-type">String</span>,                    <span class="t-comment">// the folder Pi was started in</span>
+    <span class="t-symbol">parentSession</span>: <span class="t-type">String</span>?,         <span class="t-comment">// path of the file this one was forked or cloned from</span>
+}</code></pre><p>Every other line is an entry. All entries share four fields.</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-SessionEntryBase">SessionEntryBase</span> = {
+    <span class="t-keyword">type</span>: <span class="t-type">String</span>,
+    id: <span class="t-type">String</span>,                     <span class="t-comment">// 8 hex characters, unique in the file</span>
+    <span class="t-symbol">parentId</span>: <span class="t-type">String</span>?,              <span class="t-comment">// null for a root</span>
+    timestamp: <span class="t-type">String</span>,              <span class="t-comment">// ISO 8601</span>
+}</code></pre><p>The entry types. Only the fields the pseudocode uses are shown.</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-SessionEntry">SessionEntry</span> =
+    <span class="t-type">SessionMessageEntry</span>      { type: <span class="t-literal">&quot;message&quot;</span>, message: <span class="t-type">AgentMessage</span> }   <span class="t-comment">// system, user, assistant, toolResult, bashExecution</span>
+  | <span class="t-type">ModelChangeEntry</span>         { type: <span class="t-literal">&quot;model_change&quot;</span>, provider, <span class="t-symbol">modelId</span> }
+  | <span class="t-type">ThinkingLevelChangeEntry</span> { type: <span class="t-literal">&quot;thinking_level_change&quot;</span>, <span class="t-symbol">thinkingLevel</span> }
+  | <a class="t-type t-link" href="compaction.html#def-CompactionEntry" title="CompactionEntry · compaction">CompactionEntry</a>          { type: <span class="t-literal">&quot;compaction&quot;</span>, summary, <span class="t-symbol">firstKeptEntryId</span>, <span class="t-symbol">tokensBefore</span>,
+                               <span class="t-symbol">systemMessage</span>?, details?, usage?, <span class="t-symbol">fromHook</span>? }
+  | <a class="t-type t-link" href="compaction.html#def-BranchSummaryEntry" title="BranchSummaryEntry · compaction">BranchSummaryEntry</a>       { type: <span class="t-literal">&quot;branch_summary&quot;</span>, <span class="t-symbol">fromId</span>, summary, details?, usage?, <span class="t-symbol">fromHook</span>? }
+  | <span class="t-type">CustomMessageEntry</span>       { type: <span class="t-literal">&quot;custom_message&quot;</span>, <span class="t-symbol">customType</span>, content, display, details? }
+  | <span class="t-type">ContextEditEntry</span>         { type: <span class="t-literal">&quot;context_edit&quot;</span>, <span class="t-symbol">targetId</span>, replacement: { content } | <span class="t-literal">null</span> }
+  | <span class="t-type">CustomEntry</span>              { type: <span class="t-literal">&quot;custom&quot;</span>, <span class="t-symbol">customType</span>, data? }       <span class="t-comment">// extension state, never sent</span>
+  | <span class="t-type">LabelEntry</span>               { type: <span class="t-literal">&quot;label&quot;</span>, <span class="t-symbol">targetId</span>, label: <span class="t-type">String</span>? } <span class="t-comment">// a bookmark; undefined clears it</span>
+  | <span class="t-type">SessionInfoEntry</span>         { type: <span class="t-literal">&quot;session_info&quot;</span>, name? }             <span class="t-comment">// the name from /name</span>
+  | <span class="t-type">UsageEntry</span>               { type: <span class="t-literal">&quot;usage&quot;</span>, kind, provider, model, usage }   <span class="t-comment">// e.g. &quot;cache_warm&quot;</span>
+
+<span class="t-keyword">type</span> <span class="t-type t-def" id="def-FileEntry">FileEntry</span> = <a class="t-type t-link" href="#def-SessionHeader" title="SessionHeader · session-manager">SessionHeader</a> | <a class="t-type t-link" href="#def-SessionEntry" title="SessionEntry · session-manager">SessionEntry</a></code></pre><p>What the projection returns. <code>buildSessionContext</code> returns the same without
+<code>entries</code>.</p>
+<pre class="pc"><code><span class="t-keyword">type</span> <span class="t-type t-def" id="def-ProjectedSessionEntry">ProjectedSessionEntry</span> = {
+    <span class="t-symbol">sourceEntry</span>: <a class="t-type t-link" href="#def-SessionEntry" title="SessionEntry · session-manager">SessionEntry</a>,      <span class="t-comment">// the raw entry, never changed</span>
+    messages: <span class="t-type">AgentMessage</span>[],       <span class="t-comment">// what it adds to the context; empty for state-only entries</span>
+}
+
+<span class="t-keyword">type</span> <span class="t-type t-def" id="def-SessionProjection">SessionProjection</span> = {
+    entries: <a class="t-type t-link" href="#def-ProjectedSessionEntry" title="ProjectedSessionEntry · session-manager">ProjectedSessionEntry</a>[],
+    messages: <span class="t-type">AgentMessage</span>[],       <span class="t-comment">// all entries' messages, in order</span>
+    <span class="t-symbol">thinkingLevel</span>: <span class="t-type">String</span>,          <span class="t-comment">// &quot;off&quot; if never set</span>
+    model: { provider, <span class="t-symbol">modelId</span> }?,
+}</code></pre><p>The <a class="code-link" href="#def-SessionManager"><code>SessionManager</code></a> class. A private constructor, so every session starts from
+one of the static functions.</p>
+<pre class="pc"><code><span class="t-keyword">class</span> <span class="t-type t-def" id="def-SessionManager">SessionManager</span>
+    <span class="t-comment">// start or open a session</span>
+    static <span class="t-symbol">create</span>(cwd, <span class="t-symbol">sessionDir</span>?, options?) -&gt; <a class="t-type t-link" href="#def-SessionManager" title="SessionManager · session-manager">SessionManager</a>       <span class="t-comment">// a new session</span>
+    static <a class="t-symbol t-link" href="#open" title="open · session-manager">open</a>(path, <span class="t-symbol">sessionDir</span>?, <span class="t-symbol">cwdOverride</span>?) -&gt; <a class="t-type t-link" href="#def-SessionManager" title="SessionManager · session-manager">SessionManager</a>    <span class="t-comment">// --session &lt;path&gt;</span>
+    static <a class="t-symbol t-link" href="#continuerecent" title="continueRecent · session-manager">continueRecent</a>(cwd, <span class="t-symbol">sessionDir</span>?) -&gt; <a class="t-type t-link" href="#def-SessionManager" title="SessionManager · session-manager">SessionManager</a>         <span class="t-comment">// --continue</span>
+    static <span class="t-symbol">inMemory</span>(cwd?, options?, entries?) -&gt; <a class="t-type t-link" href="#def-SessionManager" title="SessionManager · session-manager">SessionManager</a>       <span class="t-comment">// --no-session</span>
+    static <a class="t-symbol t-link" href="#forkfrom" title="forkFrom · session-manager">forkFrom</a>(<span class="t-symbol">sourcePath</span>, <span class="t-symbol">targetCwd</span>, <span class="t-symbol">sessionDir</span>?, options?) -&gt; <a class="t-type t-link" href="#def-SessionManager" title="SessionManager · session-manager">SessionManager</a>   <span class="t-comment">// --fork</span>
+    <a class="t-symbol t-link" href="#newsession" title="newSession · session-manager">newSession</a>(options?) -&gt; <span class="t-type">String</span>?                                   <span class="t-comment">// /new</span>
+
+    <span class="t-comment">// add entries: each returns the new entry's id</span>
+    <a class="t-symbol t-link" href="#appendmessage" title="appendMessage · session-manager">appendMessage</a>(message) -&gt; <span class="t-type">String</span>
+    <span class="t-symbol">appendModelChange</span>(provider, <span class="t-symbol">modelId</span>) -&gt; <span class="t-type">String</span>
+    <span class="t-symbol">appendThinkingLevelChange</span>(<span class="t-symbol">thinkingLevel</span>) -&gt; <span class="t-type">String</span>
+    <a class="t-symbol t-link" href="#appendcompaction" title="appendCompaction · session-manager">appendCompaction</a>(summary, <span class="t-symbol">firstKeptEntryId</span>?, <span class="t-symbol">tokensBefore</span>, details?, <span class="t-symbol">fromHook</span>?, usage?) -&gt; <span class="t-type">String</span>
+    <span class="t-symbol">appendCustomMessageEntry</span>(<span class="t-symbol">customType</span>, content, display, details?) -&gt; <span class="t-type">String</span>
+    <a class="t-symbol t-link" href="#appendcontextedit" title="appendContextEdit · session-manager">appendContextEdit</a>(<span class="t-symbol">targetId</span>, replacement) -&gt; <span class="t-type">String</span>
+    <span class="t-symbol">appendCustomEntry</span>(<span class="t-symbol">customType</span>, data?) -&gt; <span class="t-type">String</span>
+    <span class="t-symbol">appendLabelChange</span>(<span class="t-symbol">targetId</span>, label?) -&gt; <span class="t-type">String</span>
+    <span class="t-symbol">appendSessionInfo</span>(name) -&gt; <span class="t-type">String</span>
+    <span class="t-symbol">appendUsage</span>(kind, provider, model, usage, note?) -&gt; <span class="t-type">UsageEntry</span>
+
+    <span class="t-comment">// move in the tree</span>
+    <span class="t-symbol">getLeafId</span>() -&gt; <span class="t-type">String</span>?
+    <span class="t-symbol">getEntry</span>(id) -&gt; <a class="t-type t-link" href="#def-SessionEntry" title="SessionEntry · session-manager">SessionEntry</a>?
+    <a class="t-symbol t-link" href="#getbranch" title="getBranch · session-manager">getBranch</a>(<span class="t-symbol">fromId</span>?) -&gt; <a class="t-type t-link" href="#def-SessionEntry" title="SessionEntry · session-manager">SessionEntry</a>[]          <span class="t-comment">// root first</span>
+    <a class="t-symbol t-link" href="#gettree" title="getTree · session-manager">getTree</a>() -&gt; <span class="t-type">SessionTreeNode</span>[]
+    <a class="t-symbol t-link" href="#branch-resetleaf-branchwithsummary" title="branch, resetLeaf, branchWithSummary · session-manager">branch</a>(<span class="t-symbol">branchFromId</span>)
+    <a class="t-symbol t-link" href="#branch-resetleaf-branchwithsummary" title="branch, resetLeaf, branchWithSummary · session-manager">resetLeaf</a>()
+    <a class="t-symbol t-link" href="#branch-resetleaf-branchwithsummary" title="branch, resetLeaf, branchWithSummary · session-manager">branchWithSummary</a>(<span class="t-symbol">branchFromId</span>?, summary, details?, <span class="t-symbol">fromHook</span>?, usage?) -&gt; <span class="t-type">String</span>
+    <a class="t-symbol t-link" href="#createbranchedsession" title="createBranchedSession · session-manager">createBranchedSession</a>(<span class="t-symbol">leafId</span>) -&gt; <span class="t-type">String</span>?      <span class="t-comment">// /fork and /clone</span>
+
+    <span class="t-comment">// what the model sees</span>
+    <a class="t-symbol t-link" href="#buildcontextentries" title="buildContextEntries · session-manager">buildContextEntries</a>() -&gt; <a class="t-type t-link" href="#def-SessionEntry" title="SessionEntry · session-manager">SessionEntry</a>[]
+    <a class="t-symbol t-link" href="#buildsessionprojection" title="buildSessionProjection · session-manager">buildSessionProjection</a>() -&gt; <a class="t-type t-link" href="#def-SessionProjection" title="SessionProjection · session-manager">SessionProjection</a>
+    <span class="t-symbol">buildSessionContext</span>() -&gt; <span class="t-type">SessionContext</span></code></pre><h2 id="behavior"><a class="anchor" href="#behavior" aria-hidden="true">#</a>Behavior</h2>
+<h3 id="saving-a-message"><a class="anchor" href="#saving-a-message" aria-hidden="true">#</a>Saving a message</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts" title="packages/coding-agent/src/core/agent-session.ts">agent-session.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session.ts#L1104">AgentSession._handleAgentEvent</a></span></div><p><code>AgentSession</code> subscribes to the <a class="code-link" href="../agent/agent.html#def-Agent"><code>Agent</code></a>&#39;s events. When a message is complete,
+it saves it as an entry. This runs after extensions and the UI have seen the
+event.</p>
+<pre class="pc"><code><span class="t-keyword">on</span> <span class="t-symbol">message_end</span>(message):
+    <span class="t-keyword">match</span> message.<span class="t-symbol">role</span>:
+        <span class="t-literal">&quot;custom&quot;</span>:
+            <span class="t-symbol">entryId</span> = <span class="t-module">sessionManager</span>.<span class="t-symbol">appendCustomMessageEntry</span>(message.<span class="t-symbol">customType</span>,
+                          message.<span class="t-symbol">content</span>, message.<span class="t-symbol">display</span>, message.<span class="t-symbol">details</span>)
+        <span class="t-literal">&quot;system&quot;</span>, <span class="t-literal">&quot;user&quot;</span>, <span class="t-literal">&quot;assistant&quot;</span>, <span class="t-literal">&quot;toolResult&quot;</span>:
+            <span class="t-symbol">entryId</span> = <span class="t-module">sessionManager</span>.<a class="t-symbol t-link" href="#appendmessage" title="appendMessage · session-manager">appendMessage</a>(message)
+        <span class="t-keyword">otherwise</span>:
+            nothing        <span class="t-comment">// bashExecution, compactionSummary, branchSummary are saved elsewhere</span>
+    remember <span class="t-symbol">entryId</span> <span class="t-keyword">for</span> this message</code></pre><p>A streaming reply is saved once, when it ends. Its partial text is never
+written to the file. The other entries come from other places: <code>/model</code> adds a
+<code>model_change</code>, compaction adds a <code>compaction</code>, <code>!command</code> adds a
+<code>bashExecution</code> message, and so on.</p>
+<h3 id="appendmessage"><a class="anchor" href="#appendmessage" aria-hidden="true">#</a>appendMessage</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1204">SessionManager.appendMessage</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L277">generateId</a></span></div><p>Every <code>append*</code> method has this shape. Only the entry&#39;s own fields differ.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">appendMessage</span>(message) -&gt; <span class="t-type">String</span>
+    entry = { type: <span class="t-literal">&quot;message&quot;</span>, id: <span class="t-symbol">generateId</span>(<span class="t-symbol">byId</span>), <span class="t-symbol">parentId</span>: <span class="t-symbol">leafId</span>,
+              timestamp: now as <span class="t-symbol">ISO</span> <span class="t-literal">8601</span>, message }
+    <a class="t-symbol t-link" href="#appendentry" title="appendEntry · session-manager">_appendEntry</a>(entry)
+    <span class="t-keyword">return</span> entry.<span class="t-symbol">id</span>
+
+<span class="t-keyword">fn</span> <span class="t-symbol">generateId</span>(<span class="t-symbol">byId</span>) -&gt; <span class="t-type">String</span>
+    <span class="t-keyword">try</span> up to <span class="t-literal">100</span> times:
+        id = the first <span class="t-literal">8</span> characters of a random <span class="t-symbol">UUID</span>
+        <span class="t-keyword">if</span> <span class="t-symbol">byId</span> has no id: <span class="t-keyword">return</span> id
+    <span class="t-keyword">return</span> a full random <span class="t-symbol">UUID</span></code></pre><h3 id="appendentry"><a class="anchor" href="#appendentry" aria-hidden="true">#</a>_appendEntry</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1191">SessionManager._appendEntry</a></span></div><p>Adds the entry in memory, moves the leaf to it, and saves it.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">_appendEntry</span>(entry)
+    <span class="t-symbol">fileEntries</span>.<span class="t-symbol">add</span>(entry)
+    <span class="t-symbol">byId</span>[entry.<span class="t-symbol">id</span>] = entry
+    <span class="t-symbol">leafId</span> = entry.<span class="t-symbol">id</span>
+    <a class="t-symbol t-link" href="#persist" title="persist · session-manager">_persist</a>(entry)</code></pre><h3 id="persist"><a class="anchor" href="#persist" aria-hidden="true">#</a>_persist</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1718">SessionManager._persist</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1166">SessionManager._hasConversation</a></span></div><p>Writes one entry to the file. The file is created late: only once the session
+has a user or assistant message.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">_persist</span>(entry)
+    <span class="t-keyword">if</span> not persist or no <span class="t-symbol">sessionFile</span>:
+        <span class="t-keyword">return</span>                                  <span class="t-comment">// an in-memory session</span>
+    <span class="t-keyword">if</span> not flushed:
+        <span class="t-keyword">if</span> no entry is a user or assistant message:
+            <span class="t-keyword">return</span>
+            <span class="t-why"><span class="t-why-lbl">// why:</span> opening and closing pi without chatting leaves no file behind</span>
+        open <span class="t-symbol">sessionFile</span> with flag <span class="t-literal">&quot;wx&quot;</span>         <span class="t-comment">// fails if the file already exists</span>
+        write every entry in <span class="t-symbol">fileEntries</span>, header first, as one <span class="t-symbol">JSON</span> line each
+        flushed = <span class="t-literal">true</span>
+    <span class="t-keyword">else</span>:
+        append <span class="t-symbol">JSON</span>(entry) + <span class="t-literal">&quot;\n&quot;</span> to <span class="t-symbol">sessionFile</span></code></pre><p>The file starts at the first <em>user</em> message, not the first reply. The code
+says why: it &quot;keeps the prompt on disk if the first turn never completes
+(#10000)&quot;.</p>
+<h3 id="newsession"><a class="anchor" href="#newsession" aria-hidden="true">#</a>newSession</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1057">SessionManager.newSession</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L264">createSessionId</a></span></div><p>Starts an empty session in memory. Nothing is written yet (see <a class="code-link" href="#persist"><code>_persist</code></a>).</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">newSession</span>(options?) -&gt; <span class="t-type">String</span>?
+    <span class="t-keyword">if</span> options.<span class="t-symbol">id</span> is set: <span class="t-symbol">assertValidSessionId</span>(options.<span class="t-symbol">id</span>)
+    <span class="t-symbol">sessionId</span> = options.<span class="t-symbol">id</span> or <span class="t-symbol">uuidv7</span>()
+    header = { type: <span class="t-literal">&quot;session&quot;</span>, version: <span class="t-symbol">CURRENT_SESSION_VERSION</span>, id: <span class="t-symbol">sessionId</span>,
+               timestamp: now, cwd, <span class="t-symbol">parentSession</span>: options.<span class="t-symbol">parentSession</span> }
+    <span class="t-symbol">fileEntries</span> = [header]
+    clear <span class="t-symbol">byId</span> and the labels
+    <span class="t-symbol">leafId</span> = <span class="t-literal">null</span>
+    flushed = <span class="t-literal">false</span>
+    <span class="t-keyword">if</span> persist:
+        <span class="t-symbol">sessionFile</span> = <span class="t-symbol">sessionDir</span> + <span class="t-literal">&quot;/&quot;</span> + &lt;timestamp with <span class="t-literal">&quot;:&quot;</span> and <span class="t-literal">&quot;.&quot;</span> as <span class="t-literal">&quot;-&quot;</span>&gt; + <span class="t-literal">&quot;_&quot;</span> + <span class="t-symbol">sessionId</span> + <span class="t-literal">&quot;.jsonl&quot;</span>
+    <span class="t-keyword">return</span> <span class="t-symbol">sessionFile</span></code></pre><p>A file name looks like <code>2026-11-21T09-30-00-000Z_019a....jsonl</code>. A UUIDv7
+starts with the time, so session ids sort by creation time too.</p>
+<h3 id="getdefaultsessiondir"><a class="anchor" href="#getdefaultsessiondir" aria-hidden="true">#</a>getDefaultSessionDir</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L596">getDefaultSessionDir</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L589">getDefaultSessionDirPath</a></span></div><p>Sessions are grouped in one folder per working directory.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">getDefaultSessionDir</span>(cwd, <span class="t-symbol">agentDir</span> = ~/.<span class="t-symbol">pi</span>/agent) -&gt; <span class="t-type">String</span>
+    safe = cwd without its leading <span class="t-literal">&quot;/&quot;</span> or <span class="t-literal">&quot;\&quot;, with every &quot;</span>/<span class="t-literal">&quot;, &quot;</span>\<span class="t-literal">&quot;, and &quot;</span>:<span class="t-literal">&quot; as &quot;</span>-&quot;
+    dir = <span class="t-symbol">agentDir</span> + <span class="t-literal">&quot;/sessions/--&quot;</span> + safe + <span class="t-literal">&quot;--&quot;</span>
+    create dir <span class="t-keyword">if</span> it does not exist
+    <span class="t-keyword">return</span> dir</code></pre><p>For <code>/Users/me/work/app</code>, the folder is
+<code>~/.pi/agent/sessions/--Users-me-work-app--/</code>. <code>--session-dir</code>,
+<code>PI_CODING_AGENT_SESSION_DIR</code>, or the <code>sessionDir</code> setting put every session
+in one folder instead.</p>
+<h3 id="open"><a class="anchor" href="#open" aria-hidden="true">#</a>open</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1766">SessionManager.open</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1029">SessionManager._setSessionFile</a></span></div><p>Opens a file by path. The header gives the session&#39;s working directory.</p>
+<pre class="pc"><code>static <span class="t-keyword">fn</span> <span class="t-symbol">open</span>(path, <span class="t-symbol">sessionDir</span>?, <span class="t-symbol">cwdOverride</span>?) -&gt; <a class="t-type t-link" href="#def-SessionManager" title="SessionManager · session-manager">SessionManager</a>
+    header = <span class="t-symbol">readSessionHeader</span>(path)        <span class="t-comment">// reads at most the first 1MB</span>
+        <span class="t-comment">// if the header is bigger than that, load the whole file instead</span>
+    cwd = <span class="t-symbol">cwdOverride</span> or header.<span class="t-symbol">cwd</span> or the process's cwd
+    dir = <span class="t-symbol">sessionDir</span> or the folder that holds path
+    <span class="t-keyword">return</span> <span class="t-keyword">new</span> <a class="t-type t-link" href="#def-SessionManager" title="SessionManager · session-manager">SessionManager</a>(cwd, dir, path)   <span class="t-comment">// → </span><a class="t-ref" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1029">_setSessionFile</a><span class="t-comment">(path)</span>
+
+<span class="t-keyword">fn</span> <span class="t-symbol">_setSessionFile</span>(file)
+    <span class="t-keyword">if</span> file does not exist:
+        <a class="t-symbol t-link" href="#newsession" title="newSession · session-manager">newSession</a>(), but keep file as <span class="t-symbol">sessionFile</span>      <span class="t-comment">// created on the first message</span>
+        <span class="t-keyword">return</span>
+    entries = <a class="t-symbol t-link" href="#loadentriesfromfile" title="loadEntriesFromFile · session-manager">loadEntriesFromFile</a>(file)
+    <span class="t-keyword">if</span> entries is <span class="t-literal">empty</span>:
+        <span class="t-keyword">if</span> the file is not <span class="t-literal">empty</span>:
+            <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Session file is not a valid pi session: &lt;file&gt;&quot;</span>)
+        <a class="t-symbol t-link" href="#newsession" title="newSession · session-manager">newSession</a>(), keep file, and write the header to it now
+        <span class="t-keyword">return</span>
+    <a class="t-symbol t-link" href="#loadentries" title="loadEntries · session-manager">_loadEntries</a>(entries)
+    flushed = <span class="t-literal">true</span>                          <span class="t-comment">// later entries are appended</span></code></pre><h3 id="loadentriesfromfile"><a class="anchor" href="#loadentriesfromfile" aria-hidden="true">#</a>loadEntriesFromFile</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L627">loadEntriesFromFile</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L616">parseSessionEntryLine</a></span></div><p>Reads the file line by line. A bad line is skipped, not fatal.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">loadEntriesFromFile</span>(path) -&gt; <a class="t-type t-link" href="#def-FileEntry" title="FileEntry · session-manager">FileEntry</a>[]
+    <span class="t-keyword">if</span> path does not exist: <span class="t-keyword">return</span> []
+    read the file in 1<span class="t-symbol">MB</span> chunks, keeping a <span class="t-symbol">UTF</span>-<span class="t-literal">8</span> character split across two chunks
+        <span class="t-why"><span class="t-why-lbl">// why:</span> (test: &quot;opens session files larger than Node's max string length&quot;)</span>
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> line:
+        parse it as <span class="t-symbol">JSON</span>
+        <span class="t-keyword">if</span> the line is blank or not valid <span class="t-symbol">JSON</span>: skip it
+    <span class="t-keyword">if</span> the first record is not a <span class="t-literal">&quot;session&quot;</span> header with a string id:
+        <span class="t-keyword">return</span> []                           <span class="t-comment">// and leave the file as it is</span>
+    <span class="t-keyword">if</span> the file did not end with <span class="t-literal">&quot;\n&quot;</span>:
+        append <span class="t-literal">&quot;\n&quot;</span> to the file
+        <span class="t-comment"><span class="t-note-lbl">// note:</span> a crash during a write leaves a partial last line. It is skipped,</span>
+        <span class="t-comment">//       and the next entry still starts on a line of its own.</span>
+    <span class="t-keyword">return</span> entries</code></pre><h3 id="loadentries"><a class="anchor" href="#loadentries" aria-hidden="true">#</a>_loadEntries</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1085">SessionManager._loadEntries</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L337">migrateToCurrentVersion</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L287">migrateV1ToV2</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L316">migrateV2ToV3</a></span></div><p>Takes the loaded entries and brings old files up to the current version.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">_loadEntries</span>(entries)
+    header = the <span class="t-literal">&quot;session&quot;</span> entry
+    <span class="t-keyword">if</span> header:
+        <span class="t-symbol">fileEntries</span> = entries
+        <span class="t-symbol">sessionId</span> = header.<span class="t-symbol">id</span>
+        <span class="t-keyword">if</span> <span class="t-symbol">migrateToCurrentVersion</span>(<span class="t-symbol">fileEntries</span>):
+            <span class="t-symbol">_rewriteFile</span>()                  <span class="t-comment">// the one time Pi rewrites a whole file</span>
+    <span class="t-keyword">else</span>:                                   <span class="t-comment">// entries given to inMemory() without a header</span>
+        <a class="t-symbol t-link" href="#newsession" title="newSession · session-manager">newSession</a>()
+        add entries after the <span class="t-keyword">new</span> header
+    <a class="t-symbol t-link" href="#buildindex" title="buildIndex · session-manager">_buildIndex</a>()
+
+<span class="t-keyword">fn</span> <span class="t-symbol">migrateToCurrentVersion</span>(entries) -&gt; <span class="t-type">Bool</span>
+    version = header.<span class="t-symbol">version</span> or <span class="t-literal">1</span>
+    <span class="t-keyword">if</span> version &gt;= <span class="t-literal">3</span>: <span class="t-keyword">return</span> <span class="t-literal">false</span>
+    <span class="t-keyword">if</span> version &lt; <span class="t-literal">2</span>:                         <span class="t-comment">// v1 was a flat list</span>
+        give every entry a <span class="t-keyword">new</span> id, and make the entry before it its parent
+        turn <span class="t-module">compaction</span>.<span class="t-symbol">firstKeptEntryIndex</span> into <span class="t-symbol">firstKeptEntryId</span>
+    <span class="t-keyword">if</span> version &lt; <span class="t-literal">3</span>:
+        rename the message role <span class="t-literal">&quot;hookMessage&quot;</span> to <span class="t-literal">&quot;custom&quot;</span>
+    set header.<span class="t-symbol">version</span>
+    <span class="t-keyword">return</span> <span class="t-literal">true</span></code></pre><h3 id="buildindex"><a class="anchor" href="#buildindex" aria-hidden="true">#</a>_buildIndex</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1103">SessionManager._buildIndex</a></span></div><p>Builds the lookup maps after a load. The leaf is the last line of the file.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">_buildIndex</span>()
+    clear <span class="t-symbol">byId</span> and the labels
+    <span class="t-symbol">leafId</span> = <span class="t-literal">null</span>
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> entry in file order, skipping the header:
+        <span class="t-symbol">byId</span>[entry.<span class="t-symbol">id</span>] = entry
+        <span class="t-symbol">leafId</span> = entry.<span class="t-symbol">id</span>
+        <span class="t-keyword">if</span> entry is a label:
+            set or clear <span class="t-symbol">labelsById</span>[entry.<span class="t-symbol">targetId</span>]     <span class="t-comment">// the last label wins</span></code></pre><p>So the leaf after a reload is the last entry that was <em>written</em>. A leaf move
+alone (<a class="code-link" href="#branch-resetleaf-branchwithsummary"><code>branch</code></a>, <a class="code-link" href="#branch-resetleaf-branchwithsummary"><code>resetLeaf</code></a>) is not saved. It becomes part of the file only
+when the next entry is appended below the new leaf.</p>
+<h3 id="getbranch"><a class="anchor" href="#getbranch" aria-hidden="true">#</a>getBranch</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1469">SessionManager.getBranch</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L390">buildSessionPath</a></span></div><p>The active branch: every entry from the root to the leaf.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">getBranch</span>(<span class="t-symbol">fromId</span> = <span class="t-symbol">leafId</span>) -&gt; <a class="t-type t-link" href="#def-SessionEntry" title="SessionEntry · session-manager">SessionEntry</a>[]
+    path = []
+    entry = <span class="t-symbol">byId</span>[<span class="t-symbol">fromId</span>]
+    <span class="t-keyword">while</span> entry:
+        path.<span class="t-symbol">add</span>(entry)
+        entry = <span class="t-symbol">byId</span>[entry.<span class="t-symbol">parentId</span>]        <span class="t-comment">// stops at a root, or at a missing parent</span>
+    <span class="t-keyword">return</span> path reversed                    <span class="t-comment">// root first</span></code></pre><p>The free function <code>buildSessionPath</code>, used by the projection, does the same
+walk with two differences. A <code>null</code> leaf gives an empty path. A leaf id that
+does not exist falls back to the last entry.</p>
+<h3 id="branch-resetleaf-branchwithsummary"><a class="anchor" href="#branch-resetleaf-branchwithsummary" aria-hidden="true">#</a>branch, resetLeaf, branchWithSummary</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1579">SessionManager.branch</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1591">SessionManager.resetLeaf</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1600">SessionManager.branchWithSummary</a></span></div><p>These move the leaf. Nothing in the file changes, except that
+<code>branchWithSummary</code> appends one entry.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">branch</span>(<span class="t-symbol">branchFromId</span>)
+    <span class="t-keyword">if</span> <span class="t-symbol">byId</span> has no <span class="t-symbol">branchFromId</span>: <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Entry &lt;branchFromId&gt; not found&quot;</span>)
+    <span class="t-symbol">leafId</span> = <span class="t-symbol">branchFromId</span>                   <span class="t-comment">// the next entry is a child of it</span>
+
+<span class="t-keyword">fn</span> <span class="t-symbol">resetLeaf</span>()
+    <span class="t-symbol">leafId</span> = <span class="t-literal">null</span>                           <span class="t-comment">// the next entry is a new root</span>
+
+<span class="t-keyword">fn</span> <span class="t-symbol">branchWithSummary</span>(<span class="t-symbol">branchFromId</span>?, summary, details?, <span class="t-symbol">fromHook</span>?, usage?) -&gt; <span class="t-type">String</span>
+    <span class="t-keyword">if</span> <span class="t-symbol">branchFromId</span> is set and <span class="t-symbol">byId</span> has no such entry: <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Entry &lt;id&gt; not found&quot;</span>)
+    <span class="t-symbol">fromId</span> = <span class="t-symbol">leafId</span> or <span class="t-literal">&quot;root&quot;</span>               <span class="t-comment">// the branch being left</span>
+    <span class="t-symbol">leafId</span> = <span class="t-symbol">branchFromId</span>
+    <a class="t-symbol t-link" href="#appendentry" title="appendEntry · session-manager">_appendEntry</a>({ type: <span class="t-literal">&quot;branch_summary&quot;</span>, <span class="t-symbol">parentId</span>: <span class="t-symbol">branchFromId</span>, <span class="t-symbol">fromId</span>, summary,
+                   details, usage, <span class="t-symbol">fromHook</span>, ... })
+    <span class="t-keyword">return</span> its id</code></pre><p><code>/tree</code> calls these through <a class="code-link" href="compaction.html#navigatetree"><code>AgentSession.navigateTree</code></a> (see the
+<a href="compaction.html#navigatetree">compaction page</a>). If you pick one of your own
+messages, the leaf moves to that message&#39;s <em>parent</em>, and its text goes back
+into the editor. If you pick any other entry, the leaf moves to that entry.</p>
+<h3 id="gettree"><a class="anchor" href="#gettree" aria-hidden="true">#</a>getTree</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1529">SessionManager.getTree</a></span></div><p>The whole file as a tree, for <code>/tree</code>.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">getTree</span>() -&gt; <span class="t-type">SessionTreeNode</span>[]
+    make a node <span class="t-keyword">for</span> <span class="t-keyword">each</span> entry, with its label and the label's timestamp
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> entry:
+        <span class="t-keyword">if</span> entry.<span class="t-symbol">parentId</span> is <span class="t-literal">null</span>, or is entry.<span class="t-symbol">id</span> itself:
+            add the node to roots
+        <span class="t-keyword">else</span> <span class="t-keyword">if</span> the parent exists:
+            add the node to the parent's children
+        <span class="t-keyword">else</span>:
+            add the node to roots           <span class="t-comment">// an orphan: its parent is missing</span>
+    sort every node's children by timestamp, oldest first
+    <span class="t-keyword">return</span> roots</code></pre><h3 id="buildsessionprojection"><a class="anchor" href="#buildsessionprojection" aria-hidden="true">#</a>buildSessionProjection</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L543">buildSessionProjection</a></span></div><p>Builds what the model sees from the active branch. <code>AgentSession</code> calls it
+before every request.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">buildSessionProjection</span>(entries, <span class="t-symbol">leafId</span>, <span class="t-symbol">byId</span>) -&gt; <a class="t-type t-link" href="#def-SessionProjection" title="SessionProjection · session-manager">SessionProjection</a>
+    path = <a class="t-symbol t-link" href="#getbranch" title="getBranch · session-manager">buildSessionPath</a>(entries, <span class="t-symbol">leafId</span>)
+    <span class="t-symbol">thinkingLevel</span>, model = <a class="t-symbol t-link" href="#getsessioncontextsettings" title="getSessionContextSettings · session-manager">getSessionContextSettings</a>(path)
+    selected = <a class="t-symbol t-link" href="#buildcontextentries" title="buildContextEntries · session-manager">buildContextEntries</a>(entries, <span class="t-symbol">leafId</span>)
+    edits = {}
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> <span class="t-symbol">context_edit</span> in selected:
+        edits[edit.<span class="t-symbol">targetId</span>] = edit         <span class="t-comment">// a later edit replaces an earlier one</span>
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> entry, at index i, in selected:
+        <span class="t-keyword">if</span> entry is a compaction and i &gt; <span class="t-literal">0</span>:
+            messages = []
+            <span class="t-why"><span class="t-why-lbl">// why:</span> only the newest compaction, at index 0, adds a checkpoint and a summary</span>
+        <span class="t-keyword">else</span>:
+            messages = <a class="t-symbol t-link" href="#sessionentrytocontextmessages" title="sessionEntryToContextMessages · session-manager">projectContextEntry</a>(entry, edits[entry.<span class="t-symbol">id</span>])
+    <span class="t-keyword">return</span> { entries: each entry with its messages,
+             messages: all those messages in order, <span class="t-symbol">thinkingLevel</span>, model }</code></pre><p>A compaction can show up at <code>i > 0</code> when a newer compaction keeps entries from
+before an older one. The older compaction is then inside the kept range.</p>
+<h3 id="buildcontextentries"><a class="anchor" href="#buildcontextentries" aria-hidden="true">#</a>buildContextEntries</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L476">buildContextEntries</a></span></div><p>Picks the entries that count, taking the newest compaction into account.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">buildContextEntries</span>(entries, <span class="t-symbol">leafId</span>) -&gt; <a class="t-type t-link" href="#def-SessionEntry" title="SessionEntry · session-manager">SessionEntry</a>[]
+    path = <a class="t-symbol t-link" href="#getbranch" title="getBranch · session-manager">buildSessionPath</a>(entries, <span class="t-symbol">leafId</span>)
+    compaction = the last compaction entry on path
+    <span class="t-keyword">if</span> no compaction:
+        <span class="t-keyword">return</span> path
+    result = [compaction]
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> entry on path before compaction, starting at <span class="t-module">compaction</span>.<span class="t-symbol">firstKeptEntryId</span>:
+        <span class="t-keyword">if</span> entry is not a system message:
+            result.<span class="t-symbol">add</span>(entry)
+            <span class="t-why"><span class="t-why-lbl">// why:</span> the compaction saved the full system message at that point</span>
+    result.<span class="t-symbol">add</span>(every entry on path after compaction)
+    <span class="t-keyword">return</span> result</code></pre><p>A compaction that keeps nothing sets <code>firstKeptEntryId</code> to its own id. No
+entry before it matches, so only the summary and later entries are left.</p>
+<h3 id="sessionentrytocontextmessages"><a class="anchor" href="#sessionentrytocontextmessages" aria-hidden="true">#</a>sessionEntryToContextMessages</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L439">sessionEntryToContextMessages</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L519">projectContextEntry</a></span></div><p>What each entry type adds to the context, and how a context edit changes it.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">sessionEntryToContextMessages</span>(entry) -&gt; <span class="t-type">AgentMessage</span>[]
+    <span class="t-keyword">match</span> entry.<span class="t-symbol">type</span>:
+        <span class="t-literal">&quot;message&quot;</span>:
+            <span class="t-keyword">return</span> [entry.<span class="t-symbol">message</span>]          <span class="t-comment">// missing content becomes &quot;&quot; or []</span>
+            <span class="t-why"><span class="t-why-lbl">// why:</span> from the code: &quot;old versions, forks, or hand-edited files can</span>
+            <span class="t-why">//      contain messages with null/missing content&quot;</span>
+        <span class="t-literal">&quot;custom_message&quot;</span>:
+            <span class="t-keyword">return</span> [<span class="t-symbol">createCustomMessage</span>(<span class="t-symbol">customType</span>, content, display, details, timestamp)]
+        <span class="t-literal">&quot;branch_summary&quot;</span> with a summary:
+            <span class="t-keyword">return</span> [<span class="t-symbol">createBranchSummaryMessage</span>(summary, <span class="t-symbol">fromId</span>, timestamp)]
+        <span class="t-literal">&quot;compaction&quot;</span>:
+            <span class="t-keyword">return</span> [<span class="t-symbol">systemMessage</span>, <span class="t-symbol">createCompactionSummaryMessage</span>(summary, <span class="t-symbol">tokensBefore</span>, timestamp)]
+                   <span class="t-comment">// without systemMessage if the entry has none (older files)</span>
+        <span class="t-keyword">otherwise</span>:
+            <span class="t-keyword">return</span> []       <span class="t-comment">// model_change, thinking_level_change, custom, label,</span>
+                            <span class="t-comment">// session_info, usage, context_edit</span>
+
+<span class="t-keyword">fn</span> <span class="t-symbol">projectContextEntry</span>(entry, edit?) -&gt; <span class="t-type">AgentMessage</span>[]
+    messages = <span class="t-symbol">sessionEntryToContextMessages</span>(entry)
+    <span class="t-keyword">if</span> no edit: <span class="t-keyword">return</span> messages
+    <span class="t-keyword">if</span> edit.<span class="t-symbol">replacement</span> is <span class="t-literal">null</span>: <span class="t-keyword">return</span> []  <span class="t-comment">// the entry is left out</span>
+    <span class="t-keyword">return</span> messages with content replaced by edit.<span class="t-symbol">replacement</span>.<span class="t-symbol">content</span>
+        <span class="t-comment">// a string for an assistant or tool result becomes one text block</span></code></pre><p>The summary messages are not plain user messages yet. <code>convertToLlm</code> turns
+them into user messages with the summary in <code><summary></code> tags, when the request
+is sent.</p>
+<h3 id="getsessioncontextsettings"><a class="anchor" href="#getsessioncontextsettings" aria-hidden="true">#</a>getSessionContextSettings</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L418">getSessionContextSettings</a></span></div><p>The model and thinking level come from the whole branch, not only from the
+part after a compaction.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">getSessionContextSettings</span>(path) -&gt; { <span class="t-symbol">thinkingLevel</span>, model }
+    <span class="t-symbol">thinkingLevel</span> = <span class="t-literal">&quot;off&quot;</span>
+    model = <span class="t-literal">null</span>
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> entry on path:
+        <span class="t-keyword">match</span> entry:
+            <span class="t-symbol">thinking_level_change</span>: <span class="t-symbol">thinkingLevel</span> = entry.<span class="t-symbol">thinkingLevel</span>
+            <span class="t-symbol">model_change</span>:          model = { entry.<span class="t-symbol">provider</span>, entry.<span class="t-symbol">modelId</span> }
+            assistant message:     model = { message.<span class="t-symbol">provider</span>, message.<span class="t-symbol">model</span> }
+    <span class="t-keyword">return</span> { <span class="t-symbol">thinkingLevel</span>, model }</code></pre><h3 id="appendcontextedit"><a class="anchor" href="#appendcontextedit" aria-hidden="true">#</a>appendContextEdit</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1360">SessionManager.appendContextEdit</a></span></div><p>Changes what one earlier entry adds to the context, without touching that
+entry. Used, for example, to hide a failed attempt after a context overflow.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">appendContextEdit</span>(<span class="t-symbol">targetId</span>, replacement) -&gt; <span class="t-type">String</span>
+    <span class="t-keyword">if</span> replacement is not <span class="t-literal">null</span> and its content is not a string or an array:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Context edit replacement must be null or contain string/array content&quot;</span>)
+    <span class="t-keyword">if</span> <span class="t-symbol">byId</span> has no <span class="t-symbol">targetId</span>: <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Entry &lt;targetId&gt; not found&quot;</span>)
+    <span class="t-keyword">if</span> <span class="t-symbol">targetId</span> is not on <a class="t-symbol t-link" href="#getbranch" title="getBranch · session-manager">getBranch</a>(): <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Entry &lt;targetId&gt; is not on the active branch&quot;</span>)
+    <span class="t-keyword">if</span> the target is not a user, assistant, <span class="t-symbol">toolResult</span>, or custom message:
+        <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Entry &lt;targetId&gt; does not contribute editable model content&quot;</span>)
+    turn a string replacement <span class="t-keyword">for</span> an assistant or tool result into one text block
+    <a class="t-symbol t-link" href="#appendentry" title="appendEntry · session-manager">_appendEntry</a>({ type: <span class="t-literal">&quot;context_edit&quot;</span>, <span class="t-symbol">targetId</span>, replacement, ... })</code></pre><p>An edit is on the branch like any other entry. Move the leaf back above the
+edit, and the target&#39;s original content is what the model sees again.</p>
+<h3 id="appendcompaction"><a class="anchor" href="#appendcompaction" aria-hidden="true">#</a>appendCompaction</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1261">SessionManager.appendCompaction</a></span></div><p>Saves a compaction. The <a href="compaction.html">compaction page</a> covers how Pi writes
+the summary and picks <code>firstKeptEntryId</code>.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">appendCompaction</span>(summary, <span class="t-symbol">firstKeptEntryId</span>?, <span class="t-symbol">tokensBefore</span>, details?, <span class="t-symbol">fromHook</span>?, usage?) -&gt; <span class="t-type">String</span>
+    <span class="t-symbol">systemMessage</span> = <span class="t-symbol">getCurrentSystemMessage</span>(<a class="t-symbol t-link" href="#buildsessionprojection" title="buildSessionProjection · session-manager">buildSessionProjection</a>().<span class="t-symbol">messages</span>)
+        <span class="t-comment">// the prompt and tools as they are now, replayed from every system message</span>
+    id = <a class="t-symbol t-link" href="#appendmessage" title="appendMessage · session-manager">generateId</a>(<span class="t-symbol">byId</span>)
+    <a class="t-symbol t-link" href="#appendentry" title="appendEntry · session-manager">_appendEntry</a>({ type: <span class="t-literal">&quot;compaction&quot;</span>, id, <span class="t-symbol">parentId</span>: <span class="t-symbol">leafId</span>, summary,
+                   <span class="t-symbol">firstKeptEntryId</span>: <span class="t-symbol">firstKeptEntryId</span> or id,     <span class="t-comment">// own id: keep nothing</span>
+                   <span class="t-symbol">tokensBefore</span>, details, usage, <span class="t-symbol">fromHook</span>, <span class="t-symbol">systemMessage</span> })
+    <span class="t-keyword">return</span> id</code></pre><h3 id="createbranchedsession"><a class="anchor" href="#createbranchedsession" aria-hidden="true">#</a>createBranchedSession</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1632">SessionManager.createBranchedSession</a></span></div><p>Starts a new session file that holds one path of the old tree, from the root
+to <code>leafId</code>. <code>/fork</code> and <code>/clone</code> use it. This manager switches to the new
+file.</p>
+<pre class="pc"><code><span class="t-keyword">fn</span> <span class="t-symbol">createBranchedSession</span>(<span class="t-symbol">leafId</span>) -&gt; <span class="t-type">String</span>?
+    path = <a class="t-symbol t-link" href="#getbranch" title="getBranch · session-manager">getBranch</a>(<span class="t-symbol">leafId</span>)
+    <span class="t-keyword">if</span> path is <span class="t-literal">empty</span>: <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Entry &lt;leafId&gt; not found&quot;</span>)
+    kept = path without its label entries
+    set each kept entry's <span class="t-symbol">parentId</span> to the kept entry before it
+        <span class="t-why"><span class="t-why-lbl">// why:</span> from the code: &quot;later entries can be children of labels; removing</span>
+        <span class="t-why">//      labels requires re-chaining the retained path to avoid orphaned subtrees&quot;</span>
+    <span class="t-keyword">if</span> a compaction's <span class="t-symbol">firstKeptEntryId</span> is a removed label: point it at the next kept entry
+    header = { <span class="t-keyword">new</span> uuidv7 id, now, cwd, <span class="t-symbol">parentSession</span>: the old file }
+    labels = a <span class="t-keyword">new</span> label entry at the end <span class="t-keyword">for</span> <span class="t-keyword">each</span> label on a kept entry
+                                            <span class="t-comment">// same text, same timestamp</span>
+    <span class="t-symbol">fileEntries</span> = [header] + kept + labels
+    switch <span class="t-symbol">sessionId</span> and <span class="t-symbol">sessionFile</span> to the <span class="t-keyword">new</span> ones; <a class="t-symbol t-link" href="#buildindex" title="buildIndex · session-manager">_buildIndex</a>()
+    <span class="t-keyword">if</span> not persist: <span class="t-keyword">return</span> <span class="t-literal">undefined</span>
+    <span class="t-keyword">if</span> kept has a user or assistant message:
+        write the <span class="t-keyword">new</span> file now
+    <span class="t-keyword">else</span>:
+        let <span class="t-symbol">_persist</span> create it on the first message
+    <span class="t-keyword">return</span> the <span class="t-keyword">new</span> file's path</code></pre><p>The old file is not changed. Other branches of the old tree are not copied.</p>
+<h3 id="agentsessionruntimefork"><a class="anchor" href="#agentsessionruntimefork" aria-hidden="true">#</a>AgentSessionRuntime.fork</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session-runtime.ts" title="packages/coding-agent/src/core/agent-session-runtime.ts">agent-session-runtime.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/agent-session-runtime.ts#L262">AgentSessionRuntime.fork</a></span></div><p>The runtime behind <code>/fork</code> and <code>/clone</code>. It builds the new file, then replaces
+the running <code>AgentSession</code> with one on that file.</p>
+<pre class="pc"><code><span class="t-keyword">async</span> <span class="t-keyword">fn</span> <span class="t-symbol">fork</span>(<span class="t-symbol">entryId</span>, { position = <span class="t-literal">&quot;before&quot;</span> }) -&gt; { cancelled, <span class="t-symbol">selectedText</span>? }
+    <span class="t-keyword">if</span> @hook <span class="t-symbol">session_before_fork</span> cancels: <span class="t-keyword">return</span> { cancelled: <span class="t-literal">true</span> }
+    entry = <span class="t-module">sessionManager</span>.<span class="t-symbol">getEntry</span>(<span class="t-symbol">entryId</span>) or <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Invalid entry ID for forking&quot;</span>)
+    <span class="t-keyword">if</span> position == <span class="t-literal">&quot;at&quot;</span>:                    <span class="t-comment">// /clone: up to and including the leaf</span>
+        target = entry.<span class="t-symbol">id</span>
+    <span class="t-keyword">else</span>:                                   <span class="t-comment">// /fork: back to just before one of your messages</span>
+        <span class="t-keyword">if</span> entry is not a user message: <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Invalid entry ID for forking&quot;</span>)
+        target = entry.<span class="t-symbol">parentId</span>
+        <span class="t-symbol">selectedText</span> = the message's text   // goes back into the editor
+    <span class="t-keyword">if</span> target is <span class="t-literal">null</span>:                      <span class="t-comment">// forking the very first message</span>
+        manager = a <span class="t-keyword">new</span> <span class="t-literal">empty</span> session with <span class="t-symbol">parentSession</span> = the current file
+    <span class="t-keyword">else</span>:
+        <span class="t-keyword">if</span> the current file does not exist yet:
+            <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;This session has not been saved yet. Send a message before cloning or forking it.&quot;</span>)
+        manager = <a class="t-type t-link" href="#def-SessionManager" title="SessionManager · session-manager">SessionManager</a>.<a class="t-symbol t-link" href="#open" title="open · session-manager">open</a>(current file)
+        manager.<span class="t-symbol">createBranchedSession</span>(target)
+    stop the current runtime
+    start a <span class="t-keyword">new</span> runtime on manager          <span class="t-comment">// emits session_start{reason: &quot;fork&quot;}</span>
+    <span class="t-keyword">return</span> { cancelled: <span class="t-literal">false</span>, <span class="t-symbol">selectedText</span> }</code></pre><p>An in-memory session (<code>--no-session</code>) does the same on its current manager,
+with no files.</p>
+<h3 id="forkfrom"><a class="anchor" href="#forkfrom" aria-hidden="true">#</a>forkFrom</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1815">SessionManager.forkFrom</a></span></div><p><code>--fork <session></code> at startup, or opening a session that belongs to another
+folder. Unlike <a class="code-link" href="#createbranchedsession"><code>createBranchedSession</code></a>, it copies the <em>whole</em> tree.</p>
+<pre class="pc"><code>static <span class="t-keyword">fn</span> <span class="t-symbol">forkFrom</span>(<span class="t-symbol">sourcePath</span>, <span class="t-symbol">targetCwd</span>, <span class="t-symbol">sessionDir</span>?, options?) -&gt; <a class="t-type t-link" href="#def-SessionManager" title="SessionManager · session-manager">SessionManager</a>
+    entries = <a class="t-symbol t-link" href="#loadentriesfromfile" title="loadEntriesFromFile · session-manager">loadEntriesFromFile</a>(<span class="t-symbol">sourcePath</span>)
+    <span class="t-keyword">if</span> entries is <span class="t-literal">empty</span>: <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Cannot fork: source session file is empty or invalid: &lt;path&gt;&quot;</span>)
+    <span class="t-keyword">if</span> there is no header: <span class="t-keyword">throw</span> <span class="t-type">Error</span>(<span class="t-literal">&quot;Cannot fork: source session has no header: &lt;path&gt;&quot;</span>)
+    dir = <span class="t-symbol">sessionDir</span> or <a class="t-symbol t-link" href="#getdefaultsessiondir" title="getDefaultSessionDir · session-manager">getDefaultSessionDir</a>(<span class="t-symbol">targetCwd</span>)
+    header = { <span class="t-keyword">new</span> id (or options.<span class="t-symbol">id</span>), now, cwd: <span class="t-symbol">targetCwd</span>, <span class="t-symbol">parentSession</span>: <span class="t-symbol">sourcePath</span> }
+    write header to a <span class="t-keyword">new</span> file in dir, with flag <span class="t-literal">&quot;wx&quot;</span>
+    append every entry from the source, unchanged
+    <span class="t-keyword">return</span> a manager on the <span class="t-keyword">new</span> file</code></pre><h3 id="continuerecent"><a class="anchor" href="#continuerecent" aria-hidden="true">#</a>continueRecent</h3>
+<div class="src"><span class="lbl">Source</span><span class="src-file"><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts" title="packages/coding-agent/src/core/session-manager.ts">session-manager.ts</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L1793">SessionManager.continueRecent</a> <span class="src-sep">›</span> <a class="src-sym" href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/src/core/session-manager.ts#L749">findMostRecentSession</a></span></div><p><code>--continue</code>: open the newest session for this folder, or start a new one.</p>
+<pre class="pc"><code>static <span class="t-keyword">fn</span> <span class="t-symbol">continueRecent</span>(cwd, <span class="t-symbol">sessionDir</span>?) -&gt; <a class="t-type t-link" href="#def-SessionManager" title="SessionManager · session-manager">SessionManager</a>
+    dir = <span class="t-symbol">sessionDir</span> or <a class="t-symbol t-link" href="#getdefaultsessiondir" title="getDefaultSessionDir · session-manager">getDefaultSessionDir</a>(cwd)
+    <span class="t-symbol">filterByCwd</span> = dir is a custom folder shared by all projects
+    file = <span class="t-symbol">findMostRecentSession</span>(dir, cwd <span class="t-keyword">if</span> <span class="t-symbol">filterByCwd</span>)
+    <span class="t-keyword">return</span> a manager on file, or on a <span class="t-keyword">new</span> session <span class="t-keyword">if</span> there is none
+
+<span class="t-keyword">fn</span> <span class="t-symbol">findMostRecentSession</span>(dir, cwd?) -&gt; <span class="t-type">String</span>?
+    <span class="t-keyword">for</span> <span class="t-keyword">each</span> *.<span class="t-symbol">jsonl</span> file in dir, newest modification time first:
+        header = the file<span class="t-literal">'s header, or nothing if it can'</span>t be read
+        <span class="t-keyword">if</span> header and (no cwd given or header.<span class="t-symbol">cwd</span> is cwd):
+            <span class="t-keyword">return</span> the file
+    <span class="t-keyword">return</span> <span class="t-literal">null</span></code></pre><p>&quot;Newest&quot; means the file that changed last. Every new entry is an append, so
+that is the session you used last.</p>
+<h2 id="rules"><a class="anchor" href="#rules" aria-hidden="true">#</a>Rules</h2>
+<pre class="pc"><code><span class="t-rule-must">MUST</span>     add every <span class="t-keyword">new</span> entry as a child of the current leaf, then move the leaf to it
+<span class="t-rule-must">MUST NOT</span> change or delete a line already in the file    <span class="t-comment">// except a one-time migration rewrite</span>
+<span class="t-rule-must">MUST NOT</span> create a session file before the session has a user or assistant message
+<span class="t-rule-must">MUST</span>     create <span class="t-keyword">new</span> files with the <span class="t-literal">&quot;wx&quot;</span> flag, never overwriting an existing file
+<span class="t-rule-must">MUST</span>     skip blank and malformed lines when loading, and keep the rest
+<span class="t-rule-must">MUST NOT</span> change a non-<span class="t-literal">empty</span> file whose first record is not a session header
+<span class="t-rule-must">MUST</span>     build the model's context from the active branch only, root to leaf
+<span class="t-rule-must">MUST</span>     use only the newest compaction on the branch <span class="t-keyword">for</span> the summary and checkpoint
+<span class="t-rule-must">MUST NOT</span> send system messages from before that compaction
+<span class="t-rule-must">MUST</span>     apply only the latest context edit <span class="t-keyword">for</span> <span class="t-keyword">each</span> target on the active branch
+<span class="t-rule-must">MUST NOT</span> change the target entry of a context edit
+<span class="t-rule-must">MUST</span>     take the model and thinking level from the whole branch, including entries before a compaction
+<span class="t-rule-must">MUST</span>     record the source file as <span class="t-symbol">parentSession</span> when forking or cloning
+<span class="t-rule-must">MUST NOT</span> copy label entries into a fork as they were    <span class="t-comment">// they are rebuilt at the end</span>
+<span class="t-rule-should">SHOULD</span>   show entries whose parent is missing as roots, not drop them</code></pre><h2 id="examples"><a class="anchor" href="#examples" aria-hidden="true">#</a>Examples</h2>
+<div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/session-manager/build-context.test.ts#L212" title="packages/coding-agent/test/session-manager/build-context.test.ts">build-context.test.ts <span class="src-sep">›</span> “follows path to specified leaf”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> entries <span class="t-literal">1</span> (user <span class="t-literal">&quot;start&quot;</span>) -&gt; <span class="t-literal">2</span> (assistant) -&gt; <span class="t-literal">3</span> (user <span class="t-literal">&quot;branch A&quot;</span>)
+  <span class="t-example">AND</span> entry <span class="t-literal">4</span> (user <span class="t-literal">&quot;branch B&quot;</span>) whose parent is also <span class="t-literal">2</span>
+<span class="t-example">WHEN</span>  <span class="t-symbol">buildSessionContext</span> runs with leaf <span class="t-literal">3</span>, then with leaf <span class="t-literal">4</span>
+<span class="t-example">THEN</span>  both give <span class="t-literal">3</span> messages
+  <span class="t-example">AND</span> the last one is <span class="t-literal">&quot;branch A&quot;</span> <span class="t-keyword">for</span> leaf <span class="t-literal">3</span> and <span class="t-literal">&quot;branch B&quot;</span> <span class="t-keyword">for</span> leaf <span class="t-literal">4</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/session-manager/build-context.test.ts#L127" title="packages/coding-agent/test/session-manager/build-context.test.ts">build-context.test.ts <span class="src-sep">›</span> “includes summary before kept messages”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> user <span class="t-literal">&quot;first&quot;</span>, assistant <span class="t-literal">&quot;response1&quot;</span>, user <span class="t-literal">&quot;second&quot;</span>, assistant <span class="t-literal">&quot;response2&quot;</span>
+  <span class="t-example">AND</span> entry <span class="t-literal">5</span>, a compaction with <span class="t-symbol">firstKeptEntryId</span> <span class="t-literal">3</span> (<span class="t-literal">&quot;second&quot;</span>)
+  <span class="t-example">AND</span> user <span class="t-literal">&quot;third&quot;</span>, assistant <span class="t-literal">&quot;response3&quot;</span> after it
+<span class="t-example">WHEN</span>  <span class="t-symbol">buildSessionContext</span> runs
+<span class="t-example">THEN</span>  it gives <span class="t-literal">5</span> messages: the summary, <span class="t-literal">&quot;second&quot;</span>, <span class="t-literal">&quot;response2&quot;</span>, <span class="t-literal">&quot;third&quot;</span>, <span class="t-literal">&quot;response3&quot;</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/session-manager/build-context.test.ts#L232" title="packages/coding-agent/test/session-manager/build-context.test.ts">build-context.test.ts <span class="src-sep">›</span> “includes branch summary in path”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> <span class="t-literal">1</span> (user <span class="t-literal">&quot;start&quot;</span>) -&gt; <span class="t-literal">2</span> (assistant) -&gt; <span class="t-literal">3</span> (user <span class="t-literal">&quot;abandoned path&quot;</span>)
+  <span class="t-example">AND</span> <span class="t-literal">4</span>, a branch summary with parent <span class="t-literal">2</span> and <span class="t-symbol">fromId</span> <span class="t-literal">3</span>, then <span class="t-literal">5</span> (user <span class="t-literal">&quot;new direction&quot;</span>) under it
+<span class="t-example">WHEN</span>  <span class="t-symbol">buildSessionContext</span> runs with leaf <span class="t-literal">5</span>
+<span class="t-example">THEN</span>  it gives <span class="t-literal">4</span> messages: <span class="t-literal">&quot;start&quot;</span>, the reply, the branch summary, <span class="t-literal">&quot;new direction&quot;</span>
+  <span class="t-example">AND</span> <span class="t-literal">&quot;abandoned path&quot;</span> is not among them</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/session-manager/file-operations.test.ts#L447" title="packages/coding-agent/test/session-manager/file-operations.test.ts">file-operations.test.ts <span class="src-sep">›</span> “does not create a file for a session with only setup entries”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a <span class="t-keyword">new</span> saved session
+<span class="t-example">WHEN</span>  a <span class="t-symbol">model_change</span> and a <span class="t-symbol">thinking_level_change</span> are appended
+<span class="t-example">THEN</span>  no session file exists yet</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/session-manager/file-operations.test.ts#L456" title="packages/coding-agent/test/session-manager/file-operations.test.ts">file-operations.test.ts <span class="src-sep">›</span> “creates the file when the first user message is appended”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a <span class="t-keyword">new</span> saved session with a <span class="t-symbol">model_change</span>
+<span class="t-example">WHEN</span>  a user message <span class="t-literal">&quot;first question&quot;</span> is appended
+<span class="t-example">THEN</span>  the file holds the lines session, <span class="t-symbol">model_change</span>, user
+  <span class="t-example">AND</span> reopening it gives <span class="t-literal">1</span> message</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/session-manager/file-operations.test.ts#L83" title="packages/coding-agent/test/session-manager/file-operations.test.ts">file-operations.test.ts <span class="src-sep">›</span> “skips malformed lines but keeps valid ones”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a file with a header, the line <span class="t-literal">&quot;not valid json&quot;</span>, and a user message
+<span class="t-example">WHEN</span>  <span class="t-symbol">loadEntriesFromFile</span> reads it
+<span class="t-example">THEN</span>  it returns <span class="t-literal">2</span> entries</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/session-manager/file-operations.test.ts#L95" title="packages/coding-agent/test/session-manager/file-operations.test.ts">file-operations.test.ts <span class="src-sep">›</span> “adds a newline after an unterminated valid record”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a file whose last line, a user message, has no <span class="t-literal">&quot;\n&quot;</span> at the end
+<span class="t-example">WHEN</span>  <span class="t-symbol">loadEntriesFromFile</span> reads it
+<span class="t-example">THEN</span>  it returns <span class="t-literal">2</span> entries
+  <span class="t-example">AND</span> the file now ends with <span class="t-literal">&quot;\n&quot;</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/session-manager/file-operations.test.ts#L390" title="packages/coding-agent/test/session-manager/file-operations.test.ts">file-operations.test.ts <span class="src-sep">›</span> “throws and preserves non-empty file without valid header”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a non-<span class="t-literal">empty</span> file whose first line is not a session header
+<span class="t-example">WHEN</span>  <span class="t-symbol">setSessionFile</span> opens it
+<span class="t-example">THEN</span>  it throws <span class="t-literal">&quot;Session file is not a valid pi session: &lt;path&gt;&quot;</span>
+  <span class="t-example">AND</span> the file is unchanged</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/session-manager/migration.test.ts#L5" title="packages/coding-agent/test/session-manager/migration.test.ts">migration.test.ts <span class="src-sep">›</span> “should add id/parentId to v1 entries”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a v1 header with no version, then a user and an assistant message with no ids
+<span class="t-example">WHEN</span>  <span class="t-symbol">migrateSessionEntries</span> runs
+<span class="t-example">THEN</span>  the header's version is <span class="t-literal">3</span>
+  <span class="t-example">AND</span> each message has an <span class="t-literal">8</span>-character id
+  <span class="t-example">AND</span> the user message<span class="t-literal">'s parentId is null, the assistant'</span>s is the user message's id</code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/session-context-edit.test.ts#L119" title="packages/coding-agent/test/session-context-edit.test.ts">session-context-edit.test.ts <span class="src-sep">›</span> “keeps edits branch-relative”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> a user message <span class="t-literal">&quot;original&quot;</span>, then a context edit that replaces it with <span class="t-literal">&quot;edited&quot;</span>
+<span class="t-example">WHEN</span>  the projection is built
+<span class="t-example">THEN</span>  the model sees <span class="t-literal">&quot;edited&quot;</span>
+<span class="t-example">WHEN</span>  <a class="t-symbol t-link" href="#branch-resetleaf-branchwithsummary" title="branch, resetLeaf, branchWithSummary · session-manager">branch</a>() moves the leaf back to the user message
+<span class="t-example">THEN</span>  the model sees <span class="t-literal">&quot;original&quot;</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/session-manager/tree-traversal.test.ts#L462" title="packages/coding-agent/test/session-manager/tree-traversal.test.ts">tree-traversal.test.ts <span class="src-sep">›</span> “extracts correct path from branched tree”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> <span class="t-literal">1</span> -&gt; <span class="t-literal">2</span> -&gt; <span class="t-literal">3</span>, and a second branch <span class="t-literal">2</span> -&gt; <span class="t-literal">4</span> -&gt; <span class="t-literal">5</span>
+<span class="t-example">WHEN</span>  <a class="t-symbol t-link" href="#createbranchedsession" title="createBranchedSession · session-manager">createBranchedSession</a>(<span class="t-literal">5</span>) runs
+<span class="t-example">THEN</span>  the <span class="t-keyword">new</span> session has exactly the entries <span class="t-literal">1</span>, <span class="t-literal">2</span>, <span class="t-literal">4</span>, <span class="t-literal">5</span></code></pre><div class="exsrc exsrc-test"><span class="lbl">Test</span><a href="https://github.com/earendil-works/pi/blob/195120a9156b79b0fab67d3a458b5315bed7a33f/packages/coding-agent/test/session-manager/labels.test.ts#L145" title="packages/coding-agent/test/session-manager/labels.test.ts">labels.test.ts <span class="src-sep">›</span> “rewires children of removed labels when forking”</a></div><pre class="pc"><code><span class="t-example">GIVEN</span> user message <span class="t-literal">1</span>, a label on <span class="t-literal">1</span>, a <span class="t-symbol">model_change</span> under the label, then user message <span class="t-literal">2</span>
+<span class="t-example">WHEN</span>  <a class="t-symbol t-link" href="#createbranchedsession" title="createBranchedSession · session-manager">createBranchedSession</a>(<span class="t-literal">2</span>) runs
+<span class="t-example">THEN</span>  the <span class="t-symbol">model_change</span>'s parent is message <span class="t-literal">1</span>, not the removed label</code></pre><h2 id="notes"><a class="anchor" href="#notes" aria-hidden="true">#</a>Notes</h2>
+<p>Append-only is what makes the file safe to write. Saving an entry is one
+<code>appendFileSync</code> of one line. If Pi crashes in the middle, the worst case is a
+partial last line. The next load skips it and adds the missing <code>"\n"</code>, so the
+session still opens with everything before it.</p>
+<p>Labels and session names are entries in the tree too. <code>appendLabelChange</code> and
+<code>appendSessionInfo</code> add a child of the leaf and move the leaf, like a message.
+<a class="code-link" href="#createbranchedsession"><code>createBranchedSession</code></a> treats labels apart for that reason.</p>
+<p>The projection is built from scratch for every request, by walking the branch
+from the leaf to the root. <code>AgentSession</code> installs it in the <a class="code-link" href="../agent/agent.html#def-Agent"><code>Agent</code></a>&#39;s
+<code>prepareRequest</code>, so the messages in a request always come from the entries.
+A compaction, a branch summary, or a context edit takes
+effect on the next request just by being on the branch.</p>
+<p>Branch summaries record where you came from in <code>fromId</code>, but the summary&#39;s
+<code>parentId</code> is the point you moved <em>to</em>. That is why the summary is on the new
+branch and the model on that branch sees it.</p>
+<h2 id="source-map"><a class="anchor" href="#source-map" aria-hidden="true">#</a>Source map</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Pseudocode</th>
+<th>Real code</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Saving a message</td>
+<td>the <code>message_end</code> part of <a class="code-link" href="#saving-a-message"><code>AgentSession._handleAgentEvent</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#appendmessage"><code>appendMessage</code></a></td>
+<td><a class="code-link" href="#appendmessage"><code>SessionManager.appendMessage</code></a>, <a class="code-link" href="#appendmessage"><code>generateId</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#appendentry"><code>_appendEntry</code></a>, <a class="code-link" href="#persist"><code>_persist</code></a></td>
+<td>same names, <a class="code-link" href="#persist"><code>_hasConversation</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#newsession"><code>newSession</code></a></td>
+<td><a class="code-link" href="#newsession"><code>SessionManager.newSession</code></a>, <a class="code-link" href="#newsession"><code>createSessionId</code></a>, <code>assertValidSessionId</code></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#getdefaultsessiondir"><code>getDefaultSessionDir</code></a></td>
+<td><a class="code-link" href="#getdefaultsessiondir"><code>getDefaultSessionDir</code></a>, <a class="code-link" href="#getdefaultsessiondir"><code>getDefaultSessionDirPath</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#open"><code>open</code></a></td>
+<td><a class="code-link" href="#open"><code>SessionManager.open</code></a>, <a class="code-link" href="#open"><code>_setSessionFile</code></a>, <code>readSessionHeader</code></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#loadentriesfromfile"><code>loadEntriesFromFile</code></a></td>
+<td><a class="code-link" href="#loadentriesfromfile"><code>loadEntriesFromFile</code></a>, <a class="code-link" href="#loadentriesfromfile"><code>parseSessionEntryLine</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#loadentries"><code>_loadEntries</code></a></td>
+<td><a class="code-link" href="#loadentries"><code>_loadEntries</code></a>, <a class="code-link" href="#loadentries"><code>migrateToCurrentVersion</code></a>, <a class="code-link" href="#loadentries"><code>migrateV1ToV2</code></a>, <a class="code-link" href="#loadentries"><code>migrateV2ToV3</code></a>, <code>_rewriteFile</code></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#buildindex"><code>_buildIndex</code></a></td>
+<td><a class="code-link" href="#buildindex"><code>SessionManager._buildIndex</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#getbranch"><code>getBranch</code></a></td>
+<td><a class="code-link" href="#getbranch"><code>SessionManager.getBranch</code></a>, <a class="code-link" href="#getbranch"><code>buildSessionPath</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#branch-resetleaf-branchwithsummary"><code>branch</code></a>, <a class="code-link" href="#branch-resetleaf-branchwithsummary"><code>resetLeaf</code></a>, <a class="code-link" href="#branch-resetleaf-branchwithsummary"><code>branchWithSummary</code></a></td>
+<td>same names</td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#gettree"><code>getTree</code></a></td>
+<td><a class="code-link" href="#gettree"><code>SessionManager.getTree</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#buildsessionprojection"><code>buildSessionProjection</code></a></td>
+<td><a class="code-link" href="#buildsessionprojection"><code>buildSessionProjection</code></a>, <code>SessionManager.buildSessionProjection</code>, <code>buildSessionContext</code></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#buildcontextentries"><code>buildContextEntries</code></a></td>
+<td><a class="code-link" href="#buildcontextentries"><code>buildContextEntries</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#sessionentrytocontextmessages"><code>sessionEntryToContextMessages</code></a></td>
+<td><a class="code-link" href="#sessionentrytocontextmessages"><code>sessionEntryToContextMessages</code></a>, <a class="code-link" href="#sessionentrytocontextmessages"><code>projectContextEntry</code></a></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#getsessioncontextsettings"><code>getSessionContextSettings</code></a></td>
+<td><a class="code-link" href="#getsessioncontextsettings"><code>getSessionContextSettings</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#appendcontextedit"><code>appendContextEdit</code></a>, <a class="code-link" href="#appendcompaction"><code>appendCompaction</code></a></td>
+<td>same names</td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#createbranchedsession"><code>createBranchedSession</code></a></td>
+<td><a class="code-link" href="#createbranchedsession"><code>SessionManager.createBranchedSession</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#agentsessionruntimefork"><code>AgentSessionRuntime.fork</code></a></td>
+<td><a class="code-link" href="#agentsessionruntimefork"><code>AgentSessionRuntime.fork</code></a>, <code>emitBeforeFork</code></td>
+<td>merged</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#forkfrom"><code>forkFrom</code></a></td>
+<td><a class="code-link" href="#forkfrom"><code>SessionManager.forkFrom</code></a></td>
+<td>same</td>
+</tr>
+<tr>
+<td><a class="code-link" href="#continuerecent"><code>continueRecent</code></a></td>
+<td><a class="code-link" href="#continuerecent"><code>SessionManager.continueRecent</code></a>, <a class="code-link" href="#continuerecent"><code>findMostRecentSession</code></a>, <code>readSessionHeaderForDiscovery</code></td>
+<td>merged</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td>the other <code>append*</code> methods</td>
+<td>omitted: same shape as <a class="code-link" href="#appendmessage"><code>appendMessage</code></a></td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>list</code>, <code>listAll</code>, <code>findById</code>, <code>buildSessionInfo</code>, <code>listSessionsFromDir</code>, <code>mapWithConcurrency</code></td>
+<td>omitted: the session picker</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>getEntries</code>, <code>getEntryCount</code>, <code>getHeader</code>, <code>getChildren</code>, <code>getLabel</code>, <code>getSessionName</code>, <code>getLeafEntry</code></td>
+<td>omitted: plain getters</td>
+</tr>
+<tr>
+<td>(not shown)</td>
+<td><code>setSessionFile</code>, <code>inMemory</code>, <code>create</code>, <code>usesDefaultSessionDir</code></td>
+<td>omitted: thin wrappers around the constructor</td>
+</tr>
+</tbody></table>
+</div>
+</main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(function () {
+  try {
+    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    window.mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "strict" });
+  } catch (e) {}
+  var rail = document.querySelector(".rail-inner");
+  if (rail && window.matchMedia("(max-width: 900px)").matches) rail.open = false;
+  document.querySelectorAll(".fold-tools button").forEach(function (b) {
+    var pre = b.parentElement.nextElementSibling;
+    b.addEventListener("click", function () {
+      var open = b.dataset.fold === "open";
+      pre.querySelectorAll("details.fold").forEach(function (d) { d.open = open; });
+      b.dataset.fold = open ? "close" : "open";
+      b.textContent = open ? "close all ▾" : "open all ▸";
+    });
+  });
+})();
+</script>
+</body>
+</html>
